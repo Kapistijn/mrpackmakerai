@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ========================================
-echo MrPackMaker Installer
+echo MrPackMaker Installer (beta 1.3)
 echo ========================================
 echo.
 
@@ -89,11 +89,18 @@ if not exist config.json (
         echo   "ai": {>> config.json
         echo     "provider": "lmstudio",>> config.json
         echo     "base_url": "http://localhost:1234/v1",>> config.json
-        echo     "model": "">> config.json
+        echo     "model": "",>> config.json
+        echo     "timeout_seconds": 45,>> config.json
+        echo     "max_tokens": 4096,>> config.json
+        echo     "temperature": 0.2>> config.json
         echo   },>> config.json
-        echo   "apis": {>> config.json
-        echo     "modrinth_key": "",>> config.json
-        echo     "curseforge_key": "">> config.json
+        echo   "apis": {},>> config.json
+        echo   "voice": {>> config.json
+        echo     "whisper_url": "http://localhost:9000",>> config.json
+        echo     "tts_provider": "disabled",>> config.json
+        echo     "tts_base_url": "",>> config.json
+        echo     "tts_model": "",>> config.json
+        echo     "tts_voice": "alloy">> config.json
         echo   }>> config.json
         echo }>> config.json
     )
@@ -120,14 +127,14 @@ echo ========================================
 echo Installation completed successfully!
 echo ========================================
 echo.
-echo Starting MrPackMaker backend...
-echo.
-echo The backend will start on http://localhost:8000
+echo The app will open at http://localhost:8000
+echo Tip: next time you can just run start.bat (no reinstall needed).
+echo No AI model? In the builder, use "Quick pack (no AI)" to still get a modpack.
 echo.
 echo Press Ctrl+C to stop the server
 echo.
 
-REM Start backend
+REM Start backend (serves the built frontend at http://localhost:8000)
 call venv\Scripts\activate.bat
 start "" /b powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 2; Start-Process 'http://localhost:8000'"
 cd backend
