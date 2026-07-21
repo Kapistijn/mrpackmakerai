@@ -1,4 +1,8 @@
-"""Public and admin-only settings API contracts."""
+"""Public and unified settings API contracts.
+
+GET responses never contain a raw secret: API keys are represented by a masked
+preview plus a ``*_configured`` boolean so the UI can offer a delete action.
+"""
 
 from __future__ import annotations
 
@@ -13,12 +17,28 @@ class AISettingsPublic(BaseModel):
     max_tokens: int
     temperature: float
     configured: bool
+    api_key_configured: bool = False
+
+
+class VoiceSettingsPublic(BaseModel):
+    whisper_url: str
+    tts_provider: str
+    tts_base_url: str
+    tts_model: str
+    tts_voice: str
+    tts_enabled: bool = False
+    tts_api_key_configured: bool = False
 
 
 class SettingsOverview(BaseModel):
     ai: AISettingsPublic
-    voice: dict[str, str]
+    voice: VoiceSettingsPublic
     mod_sources: dict[str, bool]
+    modrinth_key_configured: bool = False
+    curseforge_key_configured: bool = False
+    modrinth_key_masked: str = "not configured"
+    curseforge_key_masked: str = "not configured"
+    admin_locked: bool = False
 
 
 class AIModelSelection(BaseModel):
@@ -34,7 +54,35 @@ class AISettingsUpdate(BaseModel):
     timeout_seconds: float | None = Field(default=None, ge=1.0, le=300.0)
     max_tokens: int | None = Field(default=None, ge=128, le=32768)
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    # Empty string clears the stored key; None leaves it unchanged.
     api_key: str | None = None
+
+
+class VoiceSettingsUpdate(BaseModel):
+    whisper_url: str | None = None
+    tts_provider: str | None = None
+    tts_base_url: str | None = None
+    tts_model: str | None = None
+    tts_voice: str | None = None
+    # Empty string clears the stored key; None leaves it unchanged.
+    tts_api_key: str | None = None
+
+
+class UnifiedSettingsUpdate(BaseModel):
+    """Single browser-facing update for every non-admin setting."""
+
+    ai: AISettingsUpdate | None = None
+    voice: VoiceSettingsUpdate | None = None
+    # Empty string clears the stored key; None leaves it unchanged.
+    modrinth_key: str | None = None
+    curseforge_key: str | None = None
+
+
+class TTSTestRequest(BaseModel):
+    text: str = Field(default="MrPackMaker text to speech is working.", max_length=500)
+
+
+# --- Legacy admin contracts kept for backward compatibility ------------------
 
 
 class AdminSettingsUpdate(BaseModel):

@@ -1,10 +1,16 @@
-"""Safe settings, model discovery and protected admin configuration."""
+"""Unified browser-facing settings, model discovery, TTS test and admin.
+
+Model choice, connection endpoints and non-secret preferences are not secrets,
+so the primary settings routes are open for this local, single-user app.  API
+keys are still stored encrypted and are only ever returned masked.  The legacy
+token-gated admin routes remain for shared deployments.
+"""
 
 from __future__ import annotations
 
 import hmac
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Response
 
 from app.config import config
 from app.schemas.settings import (
@@ -13,9 +19,12 @@ from app.schemas.settings import (
     AdminSettingsResponse,
     AdminSettingsUpdate,
     SettingsOverview,
+    TTSTestRequest,
+    UnifiedSettingsUpdate,
 )
 from app.services.ai_provider import AIProviderError, create_ai_provider
-from app.services.settings_service import settings_service
+from app.services.settings_service import SECRET_KEYS, settings_service
+from app.services.tts import TTSClient, TTSError
 
 router = APIRouter()
 
@@ -36,6 +45,26 @@ async def get_settings():
     return await settings_service.overview()
 
 
+@router.patch("/config", response_model=SettingsOverview)
+async def update_settings(body: UnifiedSettingsUpdate):
+    """Apply the single unified settings form. Keys are stored encrypted."""
+    try:
+        return await settings_service.update_settings(body)
+    except ValueError as exc:
+        # Pydantic validation of provider / base_url etc.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/secrets/{name}", response_model=SettingsOverview)
+async def delete_secret(name: str):
+    """Permanently delete a stored API key (modrinth, curseforge, ai, tts)."""
+    try:
+        return await settings_service.delete_secret(name)
+    except KeyError as exc:
+        allowed = ", ".join(sorted(SECRET_KEYS))
+        raise HTTPException(status_code=404, detail=f"Unknown secret '{name}'. Allowed: {allowed}") from exc
+
+
 @router.get("/ai/models")
 async def list_models():
     provider = create_ai_provider()
@@ -46,14 +75,16 @@ async def list_models():
             "models": models,
             "selected_model": config.ai.model or (models[0] if models else None),
         }
+    except AIProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     finally:
         await provider.close()
 
 
 @router.post("/ai/model", response_model=AISettingsPublic)
 async def select_model(body: AIModelSelection):
-    """Choose the active AI model. Model choice is not a secret, so this is not
-    gated behind admin auth. An empty model re-enables auto-selection."""
+    """Choose the active AI model. Not gated behind admin auth (not a secret).
+    An empty model re-enables auto-selection."""
     model = body.model.strip()
     if model:
         provider = create_ai_provider()
@@ -63,8 +94,6 @@ async def select_model(body: AIModelSelection):
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         finally:
             await provider.close()
-        # Only reject when the provider actually reported a model list that does
-        # not contain the request; some providers expose no listing at all.
         if available and model not in available:
             raise HTTPException(
                 status_code=400,
@@ -86,6 +115,17 @@ async def test_ai_connection():
         }
     finally:
         await provider.close()
+
+
+@router.post("/voice/tts/test")
+async def test_tts(body: TTSTestRequest):
+    """Synthesize a short sample and stream it back as audio for playback."""
+    client = TTSClient()
+    try:
+        audio, content_type = await client.synthesize(body.text)
+    except TTSError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(content=audio, media_type=content_type)
 
 
 @router.get("/admin", response_model=AdminSettingsResponse)

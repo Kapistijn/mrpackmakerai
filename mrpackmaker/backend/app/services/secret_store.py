@@ -1,4 +1,4 @@
-"""Small encrypted local store for admin-managed integration secrets.
+"""Small encrypted local store for browser-managed integration secrets.
 
 Deployments should set ``MRPACK_SECRET_KEY`` from their secret manager.  For a
 local desktop installation a Fernet key is generated in ``data/.secrets.key``;
@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterable
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -84,4 +84,22 @@ class SecretStore:
             if value is not None:
                 current[name] = value
         self.save(current)
+        return current
+
+    def remove(self, names: Iterable[str]) -> dict[str, str]:
+        """Delete one or more secrets. Missing names are ignored.
+
+        Used by the browser-facing settings so a user can permanently clear a
+        stored API key at any time without editing files on disk.
+        """
+        if not self._store_path.exists():
+            return {}
+        current = self.load()
+        changed = False
+        for name in names:
+            if name in current:
+                del current[name]
+                changed = True
+        if changed:
+            self.save(current)
         return current

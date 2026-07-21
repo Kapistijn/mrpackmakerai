@@ -1,9 +1,9 @@
 """Typed application configuration with safe environment overrides.
 
 ``config.json`` deliberately contains only non-sensitive settings.  API keys and
-admin credentials are supplied through environment variables (and, in a later
-admin-settings phase, an encrypted local secret store).  This keeps secrets out
-of the frontend, logs and source control from the beginning.
+admin credentials are supplied through environment variables or an encrypted
+local secret store (managed from the browser settings page).  This keeps secrets
+out of the frontend, logs and source control from the beginning.
 """
 
 from __future__ import annotations
@@ -23,7 +23,12 @@ def _repo_root() -> Path:
 
 
 class AIConfig(BaseModel):
-    """Settings shared by every OpenAI-compatible AI provider."""
+    """Settings shared by every OpenAI-compatible AI provider.
+
+    LM Studio and LiteLLM are both OpenAI-compatible, so switching between them
+    is purely a matter of ``provider`` + ``base_url`` (+ optional ``api_key`` for
+    LiteLLM). Only one provider is active at a time.
+    """
 
     provider: str = "lmstudio"
     base_url: str = "http://localhost:1234/v1"
@@ -61,16 +66,29 @@ class APIConfig(BaseModel):
 
 
 class VoiceConfig(BaseModel):
-    """Connection settings for optional local voice services.
+    """Connection settings for optional local/remote voice services.
 
-    No audio service is started by the web process; the deployment chooses and
-    manages it.  Keeping this boundary explicit prevents a later cloud/local
-    provider from leaking implementation details into the builder workflow.
+    STT (whisper.cpp) and TTS run independently of the web process.  TTS is
+    OpenAI-compatible (``POST {tts_base_url}/audio/speech``) so a LiteLLM proxy
+    can serve it; both the address and model are entered manually because a
+    proxy exposes provider-specific model names that cannot be auto-discovered.
     """
 
     whisper_url: str = "http://localhost:9000"
-    tts_provider: str = "disabled"
+    tts_provider: str = "disabled"  # disabled | litellm | openai
     tts_base_url: str = ""
+    tts_model: str = ""
+    tts_voice: str = "alloy"
+    tts_api_key: str = Field(default="", repr=False)
+
+    @field_validator("tts_provider")
+    @classmethod
+    def normalise_tts_provider(cls, value: str) -> str:
+        return (value or "disabled").strip().lower()
+
+    @property
+    def tts_enabled(self) -> bool:
+        return self.tts_provider not in {"", "disabled", "none", "off"}
 
 
 class SecurityConfig(BaseModel):
@@ -143,6 +161,16 @@ def load_config() -> AppConfig:
     apis_data["curseforge_key"] = _environment_or(
         apis_data, "MRPACK_CURSEFORGE_KEY", stored_secrets.get("curseforge_key", apis_data.get("curseforge_key", ""))
     )
+
+    voice_data["whisper_url"] = _environment_or(voice_data, "MRPACK_WHISPER_URL", voice_data.get("whisper_url", "http://localhost:9000"))
+    voice_data["tts_provider"] = _environment_or(voice_data, "MRPACK_TTS_PROVIDER", voice_data.get("tts_provider", "disabled"))
+    voice_data["tts_base_url"] = _environment_or(voice_data, "MRPACK_TTS_BASE_URL", voice_data.get("tts_base_url", ""))
+    voice_data["tts_model"] = _environment_or(voice_data, "MRPACK_TTS_MODEL", voice_data.get("tts_model", ""))
+    voice_data["tts_voice"] = _environment_or(voice_data, "MRPACK_TTS_VOICE", voice_data.get("tts_voice", "alloy"))
+    voice_data["tts_api_key"] = _environment_or(
+        voice_data, "MRPACK_TTS_API_KEY", stored_secrets.get("tts_api_key", voice_data.get("tts_api_key", ""))
+    )
+
     security_data["admin_token"] = _environment_or(
         security_data, "MRPACK_ADMIN_TOKEN", stored_secrets.get("admin_token", security_data.get("admin_token", ""))
     )
