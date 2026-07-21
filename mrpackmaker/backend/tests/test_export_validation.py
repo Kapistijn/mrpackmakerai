@@ -23,7 +23,9 @@ def complete_mod(*, source: str = "example", mod_id: str = "one", filename: str 
         slug="example-mod",
         file_name=filename,
         file_size=42,
-        download_url="https://catalog.example/mods/one.jar",
+        # Use an allowlisted host so the export host check (a Modrinth pack
+        # format requirement) is satisfied for the happy-path assertions.
+        download_url="https://cdn.modrinth.com/data/AABBCCDD/versions/1/one.jar",
         hashes=ModHash(sha1="a" * 40),
     )
 
@@ -86,3 +88,7 @@ class RegistryTests(unittest.IsolatedAsyncioTestCase):
         mod = await registry.get("demo-catalog").get_mod_detail("one", "1.20.1", "fabric")
         self.assertEqual(mod.source, "demo-catalog")
         await registry.close()
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -113,9 +113,11 @@ const ProjectBuilder = () => {
     }
   };
 
-  const handleRemoveMod = async (modId: string) => {
+  // Match on source:id, not id alone: a Modrinth and a CurseForge mod can share
+  // the same numeric id, and matching by id would remove the wrong mod.
+  const handleRemoveMod = async (source: string, modId: string) => {
     if (!project) return;
-    const updatedMods = project.mods.filter((m) => m.id !== modId);
+    const updatedMods = project.mods.filter((m) => !(m.source === source && m.id === modId));
     try {
       await api.updateProject(projectId, { mods: updatedMods });
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
@@ -276,11 +278,11 @@ const ProjectBuilder = () => {
               <div className="w-full bg-surface-border rounded-full h-2">
                 <div
                   className="bg-accent h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${(progress.step / progress.total_steps) * 100}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, (progress.step / (progress.total_steps || 7)) * 100))}%` }}
                 />
               </div>
               <div className="text-sm text-gray-400">
-                Step {progress.step} of {progress.total_steps}
+                Step {progress.step} of {progress.total_steps || 7}
               </div>
             </div>
           )}
@@ -309,7 +311,7 @@ const ProjectBuilder = () => {
           )}
           <div className="space-y-3 max-h-[500px] overflow-y-auto">
             {project.mods.map((mod) => (
-              <div key={mod.id} className="flex items-center gap-4 p-4 bg-surface-overlay rounded-lg">
+              <div key={`${mod.source}:${mod.id}`} className="flex items-center gap-4 p-4 bg-surface-overlay rounded-lg">
                 {mod.icon_url && (
                   <img src={mod.icon_url} alt={mod.name} className="w-12 h-12 rounded" />
                 )}
@@ -334,7 +336,7 @@ const ProjectBuilder = () => {
                   </a>
                 </div>
                 <button
-                  onClick={() => handleRemoveMod(mod.id)}
+                  onClick={() => handleRemoveMod(mod.source, mod.id)}
                   className="btn btn-danger p-2"
                   title="Remove mod"
                 >
@@ -369,7 +371,7 @@ const ProjectBuilder = () => {
       {step === 5 && compatibilityReport && (
         <div className="card">
           <h2 className="text-xl font-semibold text-gray-100 mb-6">Compatibility Report</h2>
-          
+
           <div className={`mb-6 p-4 rounded-lg flex items-center gap-3 ${
             compatibilityReport.status === CompatStatus.OK ? 'bg-green-900/30' :
             compatibilityReport.status === CompatStatus.WARN ? 'bg-yellow-900/30' :
