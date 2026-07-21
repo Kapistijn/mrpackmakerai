@@ -11,7 +11,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.config import AIConfig, MinecraftConfig, SourcesConfig
 from app.schemas.settings import ApiTestResult
-from app.services.api_tester import test_curseforge
+# Import the module (not the function) so pytest does not collect the imported
+# `test_curseforge` coroutine as a test case.
+from app.services import api_tester
 
 
 class AIConfigContextSizeTests(unittest.TestCase):
@@ -48,7 +50,7 @@ class ApiTestResultTests(unittest.TestCase):
 
 class CurseForgeTesterTests(unittest.TestCase):
     def test_no_key_returns_actionable_failure_without_network(self) -> None:
-        result = asyncio.run(test_curseforge(""))
+        result = asyncio.run(api_tester.test_curseforge(""))
         self.assertFalse(result.ok)
         self.assertEqual(result.service, "curseforge")
         self.assertIn("key", (result.detail or "").lower())
