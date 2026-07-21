@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator
 
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import config
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -48,6 +51,34 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_apply_compatible_migrations)
+
+
+async def reset_orphaned_generations() -> None:
+    """Recover projects left mid-generation by a crash or restart.
+
+    Without this, a project whose in-process job died stays in GENERATING
+    forever and the start endpoint keeps returning 409, so it can never be
+    generated again. We move such projects back to DRAFT and mark their
+    dangling runs as failed.
+    """
+    from app.models.enums import ProjectStatus
+    from app.models.generation import GenerationRun
+    from app.models.project import Project
+
+    async with AsyncSessionLocal() as session:
+        project_result = await session.execute(
+            update(Project)
+            .where(Project.status == ProjectStatus.GENERATING.value)
+            .values(status=ProjectStatus.DRAFT.value)
+        )
+        await session.execute(
+            update(GenerationRun)
+            .where(GenerationRun.status == "running")
+            .values(status="failed", error="Interrupted by a server restart")
+        )
+        await session.commit()
+        if project_result.rowcount:
+            logger.warning("Reset %s orphaned generating project(s) to draft", project_result.rowcount)
 
 
 def _apply_compatible_migrations(connection) -> None:

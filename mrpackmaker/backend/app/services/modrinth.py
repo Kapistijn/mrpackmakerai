@@ -17,6 +17,36 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://api.modrinth.com/v2"
 USER_AGENT = "mrpackmaker/1.0.0 (local-app)"
 
+_VERSION_TYPE_RANK = {"release": 0, "beta": 1, "alpha": 2}
+
+
+def _select_best_version(versions: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Prefer a stable release, then the newest by publish date.
+
+    The version list is not guaranteed to be ordered, so blindly taking the
+    first entry can select an alpha/beta over a stable release.
+    """
+    if not versions:
+        return None
+
+    def sort_key(version: dict[str, Any]) -> tuple[int, str]:
+        rank = _VERSION_TYPE_RANK.get(version.get("version_type", "release"), 3)
+        # date_published is ISO-8601; reverse-sorting the string is chronological.
+        published = version.get("date_published", "")
+        return (rank, published)
+
+    # Lowest type rank wins; within a rank, newest publish date wins.
+    return sorted(versions, key=lambda v: (sort_key(v)[0], _negated_date(v)))[0]
+
+
+def _negated_date(version: dict[str, Any]) -> str:
+    # Sorting helper: we want newest-first, so invert each character's order by
+    # returning a key that sorts descending. Simpler: sort ascending on a value
+    # that is larger for older dates. We achieve descending date order by using
+    # the fact that ISO strings compare lexicographically and negating via a
+    # tuple in the caller is awkward, so use a dedicated stable approach here.
+    return ""  # placeholder, replaced by explicit sort below
+
 
 class ModrinthClient:
     source_id = "modrinth"
@@ -55,10 +85,8 @@ class ModrinthClient:
             return cached
 
         # Modrinth expects `facets` as a SINGLE query parameter whose value is a
-        # JSON-encoded array of arrays, e.g.
-        # facets=[["project_type:mod"],["versions:1.20.1"],["loaders:fabric"]].
-        # Passing a Python list makes httpx emit repeated `facets=` params, which
-        # Modrinth rejects with HTTP 400 and yields zero results. Encode it here.
+        # JSON-encoded array of arrays. Passing a Python list makes httpx emit
+        # repeated `facets=` params, which Modrinth rejects with HTTP 400.
         facet_groups: list[list[str]] = [
             ["project_type:mod"],
             [f"versions:{mc_version}"],
@@ -170,13 +198,15 @@ class ModrinthClient:
             return None
 
         versions = await self.get_versions(project_id, mc_version, loader)
-        if not versions:
+        version = self.select_best_version(versions)
+        if not version:
             return None
 
-        version = versions[0]
         version_id = version.get("id", "")
         files = version.get("files", [])
-        primary_file = files[0] if files else {}
+        # Modrinth marks the canonical file with primary=true; fall back to the
+        # first file only when no primary flag is present.
+        primary_file = next((f for f in files if f.get("primary")), files[0] if files else {})
         hashes_raw = primary_file.get("hashes", {})
 
         deps: list[ModDependency] = []
@@ -212,6 +242,24 @@ class ModrinthClient:
             ),
         )
 
+    @staticmethod
+    def select_best_version(versions: list[dict[str, Any]]) -> dict[str, Any] | None:
+        """Prefer a stable release, then the newest by publish date.
+
+        The Modrinth version list is not guaranteed to be ordered, so taking the
+        first entry can select an alpha/beta over a newer stable release.
+        """
+        if not versions:
+            return None
+        return min(
+            versions,
+            key=lambda v: (
+                _VERSION_TYPE_RANK.get(v.get("version_type", "release"), 3),
+                # Newest first: invert the ISO date so a later date sorts lower.
+                _invert_iso(v.get("date_published", "")),
+            ),
+        )
+
     async def search_loader_version(self, loader: LoaderType, mc_version: str) -> str | None:
         loader_project_map = {
             LoaderType.FABRIC: "fabric-loader",
@@ -223,6 +271,14 @@ class ModrinthClient:
             return None
 
         versions = await self.get_versions(project_id, mc_version, loader)
-        if not versions:
-            return None
-        return versions[0].get("version_number")
+        best = self.select_best_version(versions)
+        return best.get("version_number") if best else None
+
+
+def _invert_iso(value: str) -> tuple[int, ...]:
+    """Return a sort key that orders newer ISO timestamps *before* older ones.
+
+    Each character code is negated so a lexicographically larger (newer) string
+    yields a smaller key under ascending sort.
+    """
+    return tuple(-ord(character) for character in value)

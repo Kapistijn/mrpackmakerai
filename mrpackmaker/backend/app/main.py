@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -11,8 +12,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import ai, compatibility, health, modpack, mods, projects, settings
-from app.db.session import init_db
+from app.db.session import init_db, reset_orphaned_generations
 from app.logging import setup_logging
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -20,10 +23,11 @@ async def lifespan(app: FastAPI):
     try:
         setup_logging()
         await init_db()
-    except Exception as e:
-        print(f"Error during startup: {e}")
-        import traceback
-        traceback.print_exc()
+        # A crash or restart mid-generation would otherwise leave a project
+        # stuck in GENERATING, which makes the start endpoint reject it forever.
+        await reset_orphaned_generations()
+    except Exception:
+        logger.exception("Startup failed")
         raise
     yield
 
@@ -31,7 +35,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MrPackMaker",
     description="AI Minecraft Modpack Generator",
-    version="1.1.0-beta.1",
+    version="1.2.0-beta.1",
     lifespan=lifespan,
 )
 
@@ -48,15 +52,19 @@ try:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-except Exception as e:
-    print(f"Error adding CORS middleware: {e}")
+except Exception:
+    logger.exception("Error adding CORS middleware")
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    # Never return the raw exception text to the client: it can leak file
+    # paths, connection strings or secrets embedded in error messages. Log the
+    # full detail server-side and hand the client a generic, safe message.
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
-        content={"detail": str(exc), "code": "internal_error"},
+        content={"detail": "An internal server error occurred.", "code": "internal_error"},
     )
 
 
@@ -68,10 +76,8 @@ try:
     app.include_router(compatibility.router, prefix="/api/compatibility", tags=["compatibility"])
     app.include_router(modpack.router, prefix="/api/modpack", tags=["modpack"])
     app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
-except Exception as e:
-    print(f"Error including routers: {e}")
-    import traceback
-    traceback.print_exc()
+except Exception:
+    logger.exception("Error including routers")
 
 # Serve the SPA in production only after every API route has been registered.
 # Static assets use their normal paths and unknown client-side routes fall back
@@ -83,6 +89,13 @@ if _frontend_dist.exists():
     @app.get("/", include_in_schema=False)
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_frontend(full_path: str = ""):
+        # An unknown /api/* path must not fall back to the SPA HTML: an API
+        # client expects JSON, and returning index.html with 200 masks 404s.
+        if full_path == "api" or full_path.startswith("api/"):
+            return JSONResponse(
+                status_code=404,
+                content={"detail": "Not found", "code": "not_found"},
+            )
         requested = (_frontend_dist / full_path).resolve()
         if _frontend_dist.resolve() in requested.parents and requested.is_file():
             return FileResponse(requested)
