@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { AIProgressEvent, CompatStatus } from '../types';
-import { ArrowLeft, Play, Square, Download, Check, X, AlertTriangle, Loader2, Trash2, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Play, Zap, Square, Download, Check, X, AlertTriangle, Loader2, Trash2, ExternalLink } from 'lucide-react';
 
 const ProjectBuilder = () => {
   const { id } = useParams<{ id: string }>();
@@ -30,6 +30,19 @@ const ProjectBuilder = () => {
     },
     onError: (error) => {
       alert(`Failed to start generation: ${(error as Error).message}`);
+    },
+  });
+
+  // Quick generation never needs an AI provider, so it is the reliable path to
+  // always get a downloadable pack.
+  const quickMutation = useMutation({
+    mutationFn: () => api.startQuickGeneration(projectId),
+    onSuccess: () => {
+      setStep(3);
+      startStreaming();
+    },
+    onError: (error) => {
+      alert(`Failed to start quick generation: ${(error as Error).message}`);
     },
   });
 
@@ -73,6 +86,11 @@ const ProjectBuilder = () => {
           queryClient.invalidateQueries({ queryKey: ['project', projectId] });
           setStep(4);
         }
+        if (event.status === 'error') {
+          unsubscribe();
+          alert(`Generation failed: ${event.message}`);
+          setStep(2);
+        }
       },
       () => {
         unsubscribe();
@@ -94,6 +112,14 @@ const ProjectBuilder = () => {
     }
     api.updateProject(projectId, { generation_prompt: generationPrompt }).then(() => {
       generateMutation.mutate();
+    });
+  };
+
+  const handleQuickGenerate = () => {
+    // Persist any prompt text so quick mode can still use it to steer search,
+    // but do not require it.
+    api.updateProject(projectId, { generation_prompt: generationPrompt }).then(() => {
+      quickMutation.mutate();
     });
   };
 
@@ -240,27 +266,50 @@ const ProjectBuilder = () => {
             value={generationPrompt}
             onChange={(e) => setGenerationPrompt(e.target.value)}
           />
+          <p className="text-sm text-gray-500 mt-3">
+            No AI model set up yet? Use <span className="text-gray-300 font-medium">Quick pack</span> to build a working modpack from the most popular compatible mods — no AI required.
+          </p>
           <div className="mt-6 flex justify-between">
             <button onClick={() => setStep(1)} className="btn btn-secondary">
               Back
             </button>
-            <button
-              onClick={handleGenerate}
-              disabled={generateMutation.isPending}
-              className="btn btn-primary inline-flex items-center gap-2"
-            >
-              {generateMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Starting...
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4" />
-                  Generate
-                </>
-              )}
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={handleQuickGenerate}
+                disabled={quickMutation.isPending || generateMutation.isPending}
+                className="btn btn-secondary inline-flex items-center gap-2"
+                title="Build a pack without AI"
+              >
+                {quickMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4" />
+                    Quick pack (no AI)
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleGenerate}
+                disabled={generateMutation.isPending || quickMutation.isPending}
+                className="btn btn-primary inline-flex items-center gap-2"
+              >
+                {generateMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4" />
+                    Generate with AI
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -268,7 +317,7 @@ const ProjectBuilder = () => {
       {/* Step 3: Generation Progress */}
       {step === 3 && (
         <div className="card">
-          <h2 className="text-xl font-semibold text-gray-100 mb-6">AI Generation Progress</h2>
+          <h2 className="text-xl font-semibold text-gray-100 mb-6">Generation Progress</h2>
           {progress && (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
@@ -305,7 +354,7 @@ const ProjectBuilder = () => {
           <h2 className="text-xl font-semibold text-gray-100 mb-6">Mod Overview ({project.mods.length} mods)</h2>
           {project.ai_summary && (
             <div className="mb-6 p-4 bg-surface-overlay rounded-lg">
-              <h3 className="font-medium text-gray-200 mb-2">AI Summary</h3>
+              <h3 className="font-medium text-gray-200 mb-2">Summary</h3>
               <p className="text-gray-400 text-sm">{project.ai_summary}</p>
             </div>
           )}

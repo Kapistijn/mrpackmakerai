@@ -129,8 +129,15 @@ class ApiClient {
   }
 
   // AI Generation
-  async startGeneration(projectId: number): Promise<{ status: string; project_id: number }> {
-    return this.request<{ status: string; project_id: number }>(`/ai/generate/${projectId}`, {
+  async startGeneration(projectId: number): Promise<{ status: string; project_id: number; mode?: string }> {
+    return this.request<{ status: string; project_id: number; mode?: string }>(`/ai/generate/${projectId}`, {
+      method: 'POST',
+    });
+  }
+
+  // AI-free generation: always available, does not need a reachable AI provider.
+  async startQuickGeneration(projectId: number): Promise<{ status: string; project_id: number; mode?: string }> {
+    return this.request<{ status: string; project_id: number; mode?: string }>(`/ai/generate/${projectId}/quick`, {
       method: 'POST',
     });
   }
