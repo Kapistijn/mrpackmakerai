@@ -7,8 +7,14 @@ import hmac
 from fastapi import APIRouter, Header, HTTPException
 
 from app.config import config
-from app.schemas.settings import AdminSettingsResponse, AdminSettingsUpdate, SettingsOverview
-from app.services.ai_provider import create_ai_provider
+from app.schemas.settings import (
+    AIModelSelection,
+    AISettingsPublic,
+    AdminSettingsResponse,
+    AdminSettingsUpdate,
+    SettingsOverview,
+)
+from app.services.ai_provider import AIProviderError, create_ai_provider
 from app.services.settings_service import settings_service
 
 router = APIRouter()
@@ -35,9 +41,36 @@ async def list_models():
     provider = create_ai_provider()
     try:
         models = await provider.list_models()
-        return {"provider": provider.provider_id, "models": models, "selected_model": config.ai.model or (models[0] if models else None)}
+        return {
+            "provider": provider.provider_id,
+            "models": models,
+            "selected_model": config.ai.model or (models[0] if models else None),
+        }
     finally:
         await provider.close()
+
+
+@router.post("/ai/model", response_model=AISettingsPublic)
+async def select_model(body: AIModelSelection):
+    """Choose the active AI model. Model choice is not a secret, so this is not
+    gated behind admin auth. An empty model re-enables auto-selection."""
+    model = body.model.strip()
+    if model:
+        provider = create_ai_provider()
+        try:
+            available = await provider.list_models()
+        except AIProviderError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        finally:
+            await provider.close()
+        # Only reject when the provider actually reported a model list that does
+        # not contain the request; some providers expose no listing at all.
+        if available and model not in available:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{model}' is not available from the configured provider",
+            )
+    return settings_service.set_model(model)
 
 
 @router.post("/ai/test")

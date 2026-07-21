@@ -49,6 +49,30 @@ class SettingsService:
             mod_sources=sources,
         )
 
+    def set_model(self, model: str) -> AISettingsPublic:
+        """Persist the active AI model without requiring admin credentials.
+
+        The model name is not a secret, so choosing it is a normal user action.
+        An empty string re-enables auto-selection of the first available model.
+        Only the public ``ai`` block of ``config.json`` is rewritten; API keys
+        stay in the encrypted secret store and are never touched here.
+        """
+        public_config = self._read_public_config()
+        ai_data = dict(public_config.get("ai", {}))
+        if "base_url" not in ai_data and "url" in ai_data:
+            ai_data["base_url"] = ai_data.pop("url")
+        ai_data["model"] = model.strip()
+        # Preserve the in-memory key so validation passes; it is excluded again
+        # before anything is written back to disk.
+        ai_data["api_key"] = config.ai.api_key
+
+        new_ai = AIConfig(**ai_data)
+        public_config["ai"] = new_ai.model_dump(exclude={"api_key"})
+        self._write_public_config(public_config)
+
+        config.ai = new_ai
+        return _public_ai()
+
     def admin_view(self) -> AdminSettingsResponse:
         return AdminSettingsResponse(
             ai=_public_ai(),
