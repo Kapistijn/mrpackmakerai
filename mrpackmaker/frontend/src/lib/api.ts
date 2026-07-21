@@ -1,4 +1,4 @@
-import { Project, ProjectListItem, ProjectSettings, ModEntry, AIProgressEvent, CompatibilityReport } from '../types';
+import { Project, ProjectListItem, ProjectSettings, ModEntry, AIProgressEvent, CompatibilityReport, SettingsOverview } from '../types';
 
 const API_BASE = '/api';
 
@@ -30,7 +30,7 @@ class ApiClient {
 
   // Settings (all public methods intentionally omit integration secrets)
   async getSettings() {
-    return this.request<import('../types').SettingsOverview>('/settings');
+    return this.request<SettingsOverview>('/settings');
   }
 
   async testAiConnection(): Promise<{ provider: string; reachable: boolean; active_model?: string; detail?: string }> {
@@ -39,6 +39,15 @@ class ApiClient {
 
   async getAiModels(): Promise<{ provider: string; models: string[]; selected_model?: string }> {
     return this.request('/settings/ai/models');
+  }
+
+  // Choosing the active model is not a secret, so no admin token is required.
+  // An empty string re-enables backend auto-selection of the first model.
+  async setAiModel(model: string): Promise<SettingsOverview['ai']> {
+    return this.request("/settings/ai/model", {
+      method: 'POST',
+      body: JSON.stringify({ model }),
+    });
   }
 
   // Projects
