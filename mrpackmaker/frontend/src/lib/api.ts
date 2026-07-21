@@ -1,4 +1,4 @@
-import { Project, ProjectListItem, ProjectSettings, ModEntry, AIProgressEvent, CompatibilityReport, SettingsOverview } from '../types';
+import { Project, ProjectListItem, ProjectSettings, ModEntry, AIProgressEvent, CompatibilityReport, SettingsOverview, UnifiedSettingsUpdate, SecretName } from '../types';
 
 const API_BASE = '/api';
 
@@ -33,6 +33,19 @@ class ApiClient {
     return this.request<SettingsOverview>('/settings');
   }
 
+  // Unified settings update. Secrets are stored encrypted server-side; sending
+  // an empty string for a key clears it (a dedicated delete also exists).
+  async updateSettings(update: UnifiedSettingsUpdate): Promise<SettingsOverview> {
+    return this.request('/settings/config', {
+      method: 'PATCH',
+      body: JSON.stringify(update),
+    });
+  }
+
+  async deleteSecret(name: SecretName): Promise<SettingsOverview> {
+    return this.request(`/settings/secrets/${name}`, { method: 'DELETE' });
+  }
+
   async testAiConnection(): Promise<{ provider: string; reachable: boolean; active_model?: string; detail?: string }> {
     return this.request('/settings/ai/test', { method: 'POST' });
   }
@@ -44,10 +57,24 @@ class ApiClient {
   // Choosing the active model is not a secret, so no admin token is required.
   // An empty string re-enables backend auto-selection of the first model.
   async setAiModel(model: string): Promise<SettingsOverview['ai']> {
-    return this.request("/settings/ai/model", {
+    return this.request('/settings/ai/model', {
       method: 'POST',
       body: JSON.stringify({ model }),
     });
+  }
+
+  // Streams a synthesized sample back as an audio blob for playback.
+  async testTts(text?: string): Promise<Blob> {
+    const response = await fetch(`${API_BASE}/settings/voice/tts/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(text ? { text } : {}),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'TTS test failed' }));
+      throw new Error(typeof error.detail === 'string' ? error.detail : 'TTS test failed');
+    }
+    return response.blob();
   }
 
   // Projects

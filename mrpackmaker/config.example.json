@@ -7,11 +7,12 @@
     "max_tokens": 4096,
     "temperature": 0.2
   },
-  "apis": {
-  },
+  "apis": {},
   "voice": {
     "whisper_url": "http://localhost:9000",
     "tts_provider": "disabled",
-    "tts_base_url": ""
+    "tts_base_url": "",
+    "tts_model": "",
+    "tts_voice": "alloy"
   }
 }
