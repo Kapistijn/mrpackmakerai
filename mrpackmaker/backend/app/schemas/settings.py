@@ -16,6 +16,7 @@ class AISettingsPublic(BaseModel):
     timeout_seconds: float
     max_tokens: int
     temperature: float
+    context_size: int = 4096
     configured: bool
     api_key_configured: bool = False
 
@@ -30,9 +31,21 @@ class VoiceSettingsPublic(BaseModel):
     tts_api_key_configured: bool = False
 
 
+class MinecraftSettingsPublic(BaseModel):
+    default_version: str
+    default_loader: str
+
+
+class SourcesSettingsPublic(BaseModel):
+    modrinth_enabled: bool
+    curseforge_enabled: bool
+
+
 class SettingsOverview(BaseModel):
     ai: AISettingsPublic
     voice: VoiceSettingsPublic
+    minecraft: MinecraftSettingsPublic
+    sources: SourcesSettingsPublic
     mod_sources: dict[str, bool]
     modrinth_key_configured: bool = False
     curseforge_key_configured: bool = False
@@ -54,6 +67,7 @@ class AISettingsUpdate(BaseModel):
     timeout_seconds: float | None = Field(default=None, ge=1.0, le=300.0)
     max_tokens: int | None = Field(default=None, ge=128, le=32768)
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    context_size: int | None = Field(default=None, ge=512, le=131072)
     # Empty string clears the stored key; None leaves it unchanged.
     api_key: str | None = None
 
@@ -68,11 +82,23 @@ class VoiceSettingsUpdate(BaseModel):
     tts_api_key: str | None = None
 
 
+class MinecraftSettingsUpdate(BaseModel):
+    default_version: str | None = None
+    default_loader: str | None = None
+
+
+class SourcesSettingsUpdate(BaseModel):
+    modrinth_enabled: bool | None = None
+    curseforge_enabled: bool | None = None
+
+
 class UnifiedSettingsUpdate(BaseModel):
     """Single browser-facing update for every non-admin setting."""
 
     ai: AISettingsUpdate | None = None
     voice: VoiceSettingsUpdate | None = None
+    minecraft: MinecraftSettingsUpdate | None = None
+    sources: SourcesSettingsUpdate | None = None
     # Empty string clears the stored key; None leaves it unchanged.
     modrinth_key: str | None = None
     curseforge_key: str | None = None
@@ -80,6 +106,18 @@ class UnifiedSettingsUpdate(BaseModel):
 
 class TTSTestRequest(BaseModel):
     text: str = Field(default="MrPackMaker text to speech is working.", max_length=500)
+
+
+class ApiTestResult(BaseModel):
+    """Uniform result for the AI / Modrinth / CurseForge test buttons."""
+
+    ok: bool
+    service: str
+    status_code: int | None = None
+    latency_ms: int | None = None
+    detail: str | None = None
+    # Free-form extras, e.g. {"provider": ..., "model": ...} or {"mods_found": ...}.
+    info: dict[str, str] = Field(default_factory=dict)
 
 
 # --- Legacy admin contracts kept for backward compatibility ------------------

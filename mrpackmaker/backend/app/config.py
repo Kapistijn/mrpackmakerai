@@ -37,6 +37,10 @@ class AIConfig(BaseModel):
     timeout_seconds: float = Field(default=45.0, ge=1.0, le=300.0)
     max_tokens: int = Field(default=4096, ge=128, le=32768)
     temperature: float = Field(default=0.2, ge=0.0, le=2.0)
+    # Informational context window the model is configured with. Not sent as a
+    # chat-completions parameter (providers reject unknown fields); surfaced in
+    # the UI so users can align it with their loaded model.
+    context_size: int = Field(default=4096, ge=512, le=131072)
 
     @field_validator("provider")
     @classmethod
@@ -63,6 +67,25 @@ class AIConfig(BaseModel):
 class APIConfig(BaseModel):
     modrinth_key: str = Field(default="", repr=False)
     curseforge_key: str = Field(default="", repr=False)
+
+
+class MinecraftConfig(BaseModel):
+    """Non-secret defaults used to pre-fill the New Project form."""
+
+    default_version: str = "1.21.1"
+    default_loader: str = "neoforge"
+
+    @field_validator("default_loader")
+    @classmethod
+    def normalise_loader(cls, value: str) -> str:
+        return (value or "neoforge").strip().lower()
+
+
+class SourcesConfig(BaseModel):
+    """Which mod catalogs the pipeline is allowed to query."""
+
+    modrinth_enabled: bool = True
+    curseforge_enabled: bool = True
 
 
 class VoiceConfig(BaseModel):
@@ -98,6 +121,8 @@ class SecurityConfig(BaseModel):
 class AppConfig(BaseModel):
     ai: AIConfig = Field(default_factory=AIConfig)
     apis: APIConfig = Field(default_factory=APIConfig)
+    minecraft: MinecraftConfig = Field(default_factory=MinecraftConfig)
+    sources: SourcesConfig = Field(default_factory=SourcesConfig)
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
 
@@ -142,6 +167,8 @@ def load_config() -> AppConfig:
         ai_data["base_url"] = ai_data.pop("url")
 
     apis_data = dict(data.get("apis", {}))
+    minecraft_data = dict(data.get("minecraft", {}))
+    sources_data = dict(data.get("sources", {}))
     voice_data = dict(data.get("voice", {}))
     security_data = dict(data.get("security", {}))
     stored_secrets = SecretStore(_repo_root() / "data").load()
@@ -178,6 +205,8 @@ def load_config() -> AppConfig:
     return AppConfig(
         ai=AIConfig(**ai_data),
         apis=APIConfig(**apis_data),
+        minecraft=MinecraftConfig(**minecraft_data),
+        sources=SourcesConfig(**sources_data),
         voice=VoiceConfig(**voice_data),
         security=SecurityConfig(**security_data),
     )

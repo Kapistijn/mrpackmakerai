@@ -1,4 +1,4 @@
-"""Unified browser-facing settings, model discovery, TTS test and admin.
+"""Unified browser-facing settings, model discovery, API/TTS tests and admin.
 
 Model choice, connection endpoints and non-secret preferences are not secrets,
 so the primary settings routes are open for this local, single-user app.  API
@@ -9,6 +9,7 @@ token-gated admin routes remain for shared deployments.
 from __future__ import annotations
 
 import hmac
+import time
 
 from fastapi import APIRouter, Header, HTTPException, Response
 
@@ -18,11 +19,13 @@ from app.schemas.settings import (
     AISettingsPublic,
     AdminSettingsResponse,
     AdminSettingsUpdate,
+    ApiTestResult,
     SettingsOverview,
     TTSTestRequest,
     UnifiedSettingsUpdate,
 )
 from app.services.ai_provider import AIProviderError, create_ai_provider
+from app.services.api_tester import test_curseforge, test_modrinth
 from app.services.settings_service import SECRET_KEYS, settings_service
 from app.services.tts import TTSClient, TTSError
 
@@ -102,19 +105,33 @@ async def select_model(body: AIModelSelection):
     return settings_service.set_model(model)
 
 
-@router.post("/ai/test")
+@router.post("/ai/test", response_model=ApiTestResult)
 async def test_ai_connection():
     provider = create_ai_provider()
+    start = time.monotonic()
     try:
         status = await provider.connection_status()
-        return {
-            "provider": status.provider,
-            "reachable": status.reachable,
-            "active_model": status.active_model,
-            "detail": status.detail,
-        }
     finally:
         await provider.close()
+    latency = int((time.monotonic() - start) * 1000)
+    return ApiTestResult(
+        ok=status.reachable,
+        service="ai",
+        status_code=200 if status.reachable else None,
+        latency_ms=latency if status.reachable else None,
+        detail="AI API works" if status.reachable else (status.detail or "Not reachable"),
+        info={"provider": status.provider, "model": status.active_model or ""} if status.reachable else {},
+    )
+
+
+@router.post("/modrinth/test", response_model=ApiTestResult)
+async def test_modrinth_connection():
+    return await test_modrinth(config.apis.modrinth_key)
+
+
+@router.post("/curseforge/test", response_model=ApiTestResult)
+async def test_curseforge_connection():
+    return await test_curseforge(config.apis.curseforge_key)
 
 
 @router.post("/voice/tts/test")

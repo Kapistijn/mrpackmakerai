@@ -11,12 +11,14 @@ import json
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from app.config import AIConfig, VoiceConfig, config
+from app.config import AIConfig, MinecraftConfig, SourcesConfig, VoiceConfig, config
 from app.schemas.settings import (
     AISettingsPublic,
     AdminSettingsResponse,
     AdminSettingsUpdate,
+    MinecraftSettingsPublic,
     SettingsOverview,
+    SourcesSettingsPublic,
     UnifiedSettingsUpdate,
     VoiceSettingsPublic,
 )
@@ -48,6 +50,7 @@ def _public_ai() -> AISettingsPublic:
         timeout_seconds=config.ai.timeout_seconds,
         max_tokens=config.ai.max_tokens,
         temperature=config.ai.temperature,
+        context_size=config.ai.context_size,
         configured=True,
         api_key_configured=bool(config.ai.api_key),
     )
@@ -65,6 +68,20 @@ def _public_voice() -> VoiceSettingsPublic:
     )
 
 
+def _public_minecraft() -> MinecraftSettingsPublic:
+    return MinecraftSettingsPublic(
+        default_version=config.minecraft.default_version,
+        default_loader=config.minecraft.default_loader,
+    )
+
+
+def _public_sources() -> SourcesSettingsPublic:
+    return SourcesSettingsPublic(
+        modrinth_enabled=config.sources.modrinth_enabled,
+        curseforge_enabled=config.sources.curseforge_enabled,
+    )
+
+
 class SettingsService:
     async def overview(self) -> SettingsOverview:
         registry = create_default_registry()
@@ -75,6 +92,8 @@ class SettingsService:
         return SettingsOverview(
             ai=_public_ai(),
             voice=_public_voice(),
+            minecraft=_public_minecraft(),
+            sources=_public_sources(),
             mod_sources=sources,
             modrinth_key_configured=bool(config.apis.modrinth_key),
             curseforge_key_configured=bool(config.apis.curseforge_key),
@@ -106,11 +125,13 @@ class SettingsService:
         public_config = self._read_public_config()
         ai_data = self._ai_data(public_config)
         voice_data = self._voice_data(public_config)
+        minecraft_data = dict(public_config.get("minecraft", {}))
+        sources_data = dict(public_config.get("sources", {}))
         secret_set: dict[str, str] = {}
         secret_clear: list[str] = []
 
         if update.ai is not None:
-            for name in ("provider", "base_url", "model", "timeout_seconds", "max_tokens", "temperature"):
+            for name in ("provider", "base_url", "model", "timeout_seconds", "max_tokens", "temperature", "context_size"):
                 value = getattr(update.ai, name)
                 if value is not None:
                     ai_data[name] = value
@@ -129,6 +150,17 @@ class SettingsService:
                 voice_data["tts_api_key"] = key
                 (secret_set.__setitem__("tts_api_key", key) if key else secret_clear.append("tts_api_key"))
 
+        if update.minecraft is not None:
+            for name in ("default_version", "default_loader"):
+                value = getattr(update.minecraft, name)
+                if value is not None:
+                    minecraft_data[name] = value
+        if update.sources is not None:
+            for name in ("modrinth_enabled", "curseforge_enabled"):
+                value = getattr(update.sources, name)
+                if value is not None:
+                    sources_data[name] = value
+
         for field_name, store_key in (("modrinth_key", "modrinth_key"), ("curseforge_key", "curseforge_key")):
             value = getattr(update, field_name)
             if value is not None:
@@ -141,6 +173,8 @@ class SettingsService:
         # Validate the whole configuration first.
         new_ai = AIConfig(**ai_data)
         new_voice = VoiceConfig(**voice_data)
+        new_minecraft = MinecraftConfig(**minecraft_data)
+        new_sources = SourcesConfig(**sources_data)
 
         store = SecretStore(config.data_dir)
         if secret_set:
@@ -150,6 +184,8 @@ class SettingsService:
 
         public_config["ai"] = new_ai.model_dump(exclude={"api_key"})
         public_config["voice"] = new_voice.model_dump(exclude={"tts_api_key"})
+        public_config["minecraft"] = new_minecraft.model_dump()
+        public_config["sources"] = new_sources.model_dump()
         public_config.setdefault("apis", {})
         public_config["apis"].pop("modrinth_key", None)
         public_config["apis"].pop("curseforge_key", None)
@@ -157,6 +193,8 @@ class SettingsService:
 
         config.ai = new_ai
         config.voice = new_voice
+        config.minecraft = new_minecraft
+        config.sources = new_sources
         if "modrinth_key" in secret_set:
             config.apis.modrinth_key = secret_set["modrinth_key"]
         elif "modrinth_key" in secret_clear:
@@ -199,7 +237,7 @@ class SettingsService:
             "admin_token": update.admin_token,
         }
         if update.ai:
-            for name in ("provider", "base_url", "model", "timeout_seconds", "max_tokens", "temperature"):
+            for name in ("provider", "base_url", "model", "timeout_seconds", "max_tokens", "temperature", "context_size"):
                 value = getattr(update.ai, name)
                 if value is not None:
                     ai_data[name] = value
