@@ -20,32 +20,13 @@ USER_AGENT = "mrpackmaker/1.0.0 (local-app)"
 _VERSION_TYPE_RANK = {"release": 0, "beta": 1, "alpha": 2}
 
 
-def _select_best_version(versions: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Prefer a stable release, then the newest by publish date.
+def _invert_iso(value: str) -> tuple[int, ...]:
+    """Return a sort key that orders newer ISO timestamps *before* older ones.
 
-    The version list is not guaranteed to be ordered, so blindly taking the
-    first entry can select an alpha/beta over a stable release.
+    Each character code is negated so a lexicographically larger (newer) string
+    yields a smaller key under ascending sort.
     """
-    if not versions:
-        return None
-
-    def sort_key(version: dict[str, Any]) -> tuple[int, str]:
-        rank = _VERSION_TYPE_RANK.get(version.get("version_type", "release"), 3)
-        # date_published is ISO-8601; reverse-sorting the string is chronological.
-        published = version.get("date_published", "")
-        return (rank, published)
-
-    # Lowest type rank wins; within a rank, newest publish date wins.
-    return sorted(versions, key=lambda v: (sort_key(v)[0], _negated_date(v)))[0]
-
-
-def _negated_date(version: dict[str, Any]) -> str:
-    # Sorting helper: we want newest-first, so invert each character's order by
-    # returning a key that sorts descending. Simpler: sort ascending on a value
-    # that is larger for older dates. We achieve descending date order by using
-    # the fact that ISO strings compare lexicographically and negating via a
-    # tuple in the caller is awkward, so use a dedicated stable approach here.
-    return ""  # placeholder, replaced by explicit sort below
+    return tuple(-ord(character) for character in value)
 
 
 class ModrinthClient:
@@ -273,12 +254,3 @@ class ModrinthClient:
         versions = await self.get_versions(project_id, mc_version, loader)
         best = self.select_best_version(versions)
         return best.get("version_number") if best else None
-
-
-def _invert_iso(value: str) -> tuple[int, ...]:
-    """Return a sort key that orders newer ISO timestamps *before* older ones.
-
-    Each character code is negated so a lexicographically larger (newer) string
-    yields a smaller key under ascending sort.
-    """
-    return tuple(-ord(character) for character in value)
