@@ -1,4 +1,4 @@
-import { Project, ProjectListItem, ProjectSettings, ModEntry, AIProgressEvent, CompatibilityReport, SettingsOverview, UnifiedSettingsUpdate, SecretName } from '../types';
+import { Project, ProjectListItem, ProjectSettings, ModEntry, AIProgressEvent, CompatibilityReport, SettingsOverview, UnifiedSettingsUpdate, SecretName, ApiTestResult } from '../types';
 
 const API_BASE = '/api';
 
@@ -46,8 +46,16 @@ class ApiClient {
     return this.request(`/settings/secrets/${name}`, { method: 'DELETE' });
   }
 
-  async testAiConnection(): Promise<{ provider: string; reachable: boolean; active_model?: string; detail?: string }> {
+  async testAiConnection(): Promise<ApiTestResult> {
     return this.request('/settings/ai/test', { method: 'POST' });
+  }
+
+  async testModrinth(): Promise<ApiTestResult> {
+    return this.request('/settings/modrinth/test', { method: 'POST' });
+  }
+
+  async testCurseforge(): Promise<ApiTestResult> {
+    return this.request('/settings/curseforge/test', { method: 'POST' });
   }
 
   async getAiModels(): Promise<{ provider: string; models: string[]; selected_model?: string }> {

@@ -143,6 +143,7 @@ export interface AISettingsPublic {
   timeout_seconds: number;
   max_tokens: number;
   temperature: number;
+  context_size: number;
   configured: boolean;
   api_key_configured: boolean;
 }
@@ -157,9 +158,21 @@ export interface VoiceSettingsPublic {
   tts_api_key_configured: boolean;
 }
 
+export interface MinecraftSettingsPublic {
+  default_version: string;
+  default_loader: string;
+}
+
+export interface SourcesSettingsPublic {
+  modrinth_enabled: boolean;
+  curseforge_enabled: boolean;
+}
+
 export interface SettingsOverview {
   ai: AISettingsPublic;
   voice: VoiceSettingsPublic;
+  minecraft: MinecraftSettingsPublic;
+  sources: SourcesSettingsPublic;
   mod_sources: Record<string, boolean>;
   modrinth_key_configured: boolean;
   curseforge_key_configured: boolean;
@@ -175,6 +188,7 @@ export interface AISettingsUpdate {
   timeout_seconds?: number;
   max_tokens?: number;
   temperature?: number;
+  context_size?: number;
   api_key?: string;
 }
 
@@ -187,11 +201,32 @@ export interface VoiceSettingsUpdate {
   tts_api_key?: string;
 }
 
+export interface MinecraftSettingsUpdate {
+  default_version?: string;
+  default_loader?: string;
+}
+
+export interface SourcesSettingsUpdate {
+  modrinth_enabled?: boolean;
+  curseforge_enabled?: boolean;
+}
+
 export interface UnifiedSettingsUpdate {
   ai?: AISettingsUpdate;
   voice?: VoiceSettingsUpdate;
+  minecraft?: MinecraftSettingsUpdate;
+  sources?: SourcesSettingsUpdate;
   modrinth_key?: string;
   curseforge_key?: string;
+}
+
+export interface ApiTestResult {
+  ok: boolean;
+  service: string;
+  status_code?: number;
+  latency_ms?: number;
+  detail?: string;
+  info: Record<string, string>;
 }
 
 export type SecretName = 'modrinth' | 'curseforge' | 'ai' | 'tts';
