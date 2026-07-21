@@ -21,6 +21,12 @@ class SettingsOverview(BaseModel):
     mod_sources: dict[str, bool]
 
 
+class AIModelSelection(BaseModel):
+    """Non-secret model choice. An empty value re-enables auto-selection."""
+
+    model: str = ""
+
+
 class AISettingsUpdate(BaseModel):
     provider: str | None = None
     base_url: str | None = None

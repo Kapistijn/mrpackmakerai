@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -53,17 +54,22 @@ class ModrinthClient:
         if cached is not None:
             return cached
 
-        facets: list[str] = [
-            '["project_type:mod"]',
-            f'["versions:{mc_version}"]',
-            f'["loaders:{loader.value}"]',
+        # Modrinth expects `facets` as a SINGLE query parameter whose value is a
+        # JSON-encoded array of arrays, e.g.
+        # facets=[["project_type:mod"],["versions:1.20.1"],["loaders:fabric"]].
+        # Passing a Python list makes httpx emit repeated `facets=` params, which
+        # Modrinth rejects with HTTP 400 and yields zero results. Encode it here.
+        facet_groups: list[list[str]] = [
+            ["project_type:mod"],
+            [f"versions:{mc_version}"],
+            [f"loaders:{loader.value}"],
         ]
         if category:
-            facets.append(f'["categories:{category}"]')
+            facet_groups.append([f"categories:{category}"])
 
         params: dict[str, Any] = {
             "query": query,
-            "facets": facets,
+            "facets": json.dumps(facet_groups),
             "limit": limit,
             "offset": offset,
             "index": "relevance",
@@ -126,7 +132,7 @@ class ModrinthClient:
         if cached is not None:
             return cached
 
-        params = {"loaders": json_dumps([loader.value]), "game_versions": json_dumps([mc_version])}
+        params = {"loaders": json.dumps([loader.value]), "game_versions": json.dumps([mc_version])}
         try:
             resp = await self._client.get(f"/project/{project_id}/version", params=params)
             resp.raise_for_status()
@@ -220,8 +226,3 @@ class ModrinthClient:
         if not versions:
             return None
         return versions[0].get("version_number")
-
-
-def json_dumps(obj: Any) -> str:
-    import json
-    return json.dumps(obj)
