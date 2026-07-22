@@ -13,11 +13,11 @@ A professional AI-powered web application that automatically generates fully fun
 
 Already installed? Just run **`start.bat`** next time.
 
-> **No AI needed to get a pack.** "Quick pack" builds a working modpack from the most popular compatible mods for your version, loader and theme. Set up LM Studio or LiteLLM later for AI-curated packs.
+> **No AI needed to get a pack.** "Quick pack" builds a working modpack from the most popular compatible mods for your version, loader and theme. Set up LM Studio, Ollama or LiteLLM later for AI-curated packs.
 
 ## Features
 
-- **AI-Powered Generation**: Supports LM Studio, LiteLLM/Ollama, and other OpenAI-compatible endpoints
+- **AI-Powered Generation**: Supports LM Studio, Ollama, LiteLLM, and other OpenAI-compatible endpoints
 - **Quick pack (no AI)**: Deterministic, always-available generation from the most popular compatible mods
 - **Multi-Source Support**: Searches mods from both Modrinth and CurseForge APIs
 - **Compatibility Engine**: Automatically checks for dependency conflicts and missing libraries
@@ -36,7 +36,8 @@ FastAPI Backend
  ┌──────┼───────────────┐
  │      │               │
  ▼      ▼               ▼
-LM Studio / LiteLLM    Modrinth API    CurseForge API
+LM Studio / Ollama     Modrinth API    CurseForge API
+ / LiteLLM
         │
         ▼
 Compatibility Engine
@@ -52,7 +53,7 @@ Output/
 
 - Python 3.10 or higher
 - Node.js 18 or higher
-- Optional: LM Studio or LiteLLM (only needed for AI-curated generation; Quick pack works without them)
+- Optional: LM Studio, Ollama or LiteLLM (only needed for AI-curated generation; Quick pack works without them)
 
 ## Installation
 
@@ -133,12 +134,31 @@ All settings can be edited from the in-app **Settings** page. `config.json` hold
 }
 ```
 
-- **AI Settings**: Configure any OpenAI-compatible connection (LM Studio or LiteLLM). Leave `model` empty to auto-select the first available model.
+- **AI Settings**: Configure any OpenAI-compatible connection (LM Studio, Ollama or LiteLLM). Leave `model` empty to auto-select the first available model.
 - **Secrets**: Entered in the Settings page and stored encrypted; never placed in `config.json`.
+
+### Choosing an AI provider (LM Studio / Ollama / LiteLLM)
+
+All supported providers speak the OpenAI chat-completions protocol, so switching between them is just a `provider` + `base_url` change. Selecting a known provider fills in the default local address automatically, so you usually only need to set `provider`:
+
+| Provider   | `provider` value | Default `base_url`              |
+|------------|------------------|---------------------------------|
+| LM Studio  | `lmstudio`       | `http://localhost:1234/v1`      |
+| Ollama     | `ollama`         | `http://localhost:11434/v1`     |
+| LiteLLM    | `litellm`        | `http://localhost:4000/v1`      |
+
+#### Using Ollama
+
+1. Install [Ollama](https://ollama.com) and pull an instruction-tuned model, e.g. `ollama pull llama3` (Ollama serves the OpenAI-compatible API automatically at `http://localhost:11434/v1`).
+2. In the **Settings** page set the provider to **Ollama** (or set `"provider": "ollama"` in `config.json`; the base URL is filled in for you). You can override `base_url` if Ollama runs on another host/port.
+3. Leave the model empty to auto-select, or pick a pulled model from the dropdown.
+4. Click **Test AI Connection** to confirm it is reachable.
+
+> Ollama needs no API key for local use. If a build or model rejects strict JSON mode, MrPackMaker automatically retries the request without it and enforces JSON via the prompt, so generation still works.
 
 ### Important: Model Selection (AI mode only)
 
-**The model you use in LM Studio is critical!** The AI requires an **instruction-tuned model** that can follow complex instructions and return structured JSON.
+**The model you use is critical!** The AI requires an **instruction-tuned model** that can follow complex instructions and return structured JSON.
 
 **✅ Recommended Models (Instruction-tuned):**
 - **Llama 3 Instruct** (best overall)
@@ -154,7 +174,7 @@ If the AI is unavailable or returns unusable output, generation automatically fa
 
 ## Usage
 
-1. **(Optional) Start LM Studio or LiteLLM** and select the model in the Settings page.
+1. **(Optional) Start LM Studio, Ollama or LiteLLM** and select the model in the Settings page.
 2. **Start the app** with `installer.bat` (first time) or `start.bat`, then open `http://localhost:8000`.
 3. **Create a project** — Minecraft version, loader, theme, difficulty, performance preference.
 4. **Generate**:
@@ -213,7 +233,8 @@ python -m pytest -q
 ## Troubleshooting
 
 ### AI Connection Failed
-- Ensure LM Studio / LiteLLM is running and a model is loaded
+- Ensure LM Studio / Ollama / LiteLLM is running and a model is loaded
+- For Ollama, confirm `http://localhost:11434/v1` is reachable and a model has been pulled
 - Or just use **Quick pack (no AI)** — it does not need an AI provider
 
 ### Frontend Build Failed

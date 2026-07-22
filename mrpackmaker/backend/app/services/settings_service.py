@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from app.config import AIConfig, MinecraftConfig, SourcesConfig, VoiceConfig, config
+from app.config import PROVIDER_PRESETS, AIConfig, MinecraftConfig, SourcesConfig, VoiceConfig, config
 from app.schemas.settings import (
     AISettingsPublic,
     AdminSettingsResponse,
@@ -100,6 +100,7 @@ class SettingsService:
             modrinth_key_masked=_mask(config.apis.modrinth_key),
             curseforge_key_masked=_mask(config.apis.curseforge_key),
             admin_locked=bool(config.security.admin_token),
+            provider_presets=dict(PROVIDER_PRESETS),
         )
 
     def set_model(self, model: str) -> AISettingsPublic:
