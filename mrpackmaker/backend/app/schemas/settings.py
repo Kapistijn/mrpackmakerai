@@ -52,6 +52,9 @@ class SettingsOverview(BaseModel):
     modrinth_key_masked: str = "not configured"
     curseforge_key_masked: str = "not configured"
     admin_locked: bool = False
+    # provider id -> suggested base_url, so the UI can offer a provider picker
+    # (LM Studio / Ollama / LiteLLM) that pre-fills the correct local address.
+    provider_presets: dict[str, str] = Field(default_factory=dict)
 
 
 class AIModelSelection(BaseModel):

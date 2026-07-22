@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MrPackMaker",
     description="AI Minecraft Modpack Generator",
-    version="1.4.0-beta.1",
+    version="1.5.0-beta.1",
     lifespan=lifespan,
 )
 

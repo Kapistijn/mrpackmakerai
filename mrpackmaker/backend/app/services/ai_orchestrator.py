@@ -43,7 +43,7 @@ THEME_CATEGORIES = {
 }
 
 # A performance-friendly baseline that exists for every common version/loader.
-# Used to give even an empty/ízkeyword-free request a sensible starting point.
+# Used to give even an empty/keyword-free request a sensible starting point.
 POPULAR_FALLBACK_QUERIES = ["performance", "utility", "storage"]
 
 
@@ -351,6 +351,12 @@ class AIOrchestrator:
             await registry.close()
             await queue.put(None)
             self._active.pop(project_id, None)
+            # Drop the per-project event queue as well. Without this the dict
+            # grows for the lifetime of the process, and a client that connects
+            # to the stream *after* completion would block forever on an empty
+            # queue that never receives another sentinel. A late subscriber now
+            # simply finds no queue and the stream ends cleanly.
+            self._events.pop(project_id, None)
 
     async def _mark_failed(self, project_id: int, message: str) -> None:
         async with AsyncSessionLocal() as db:
