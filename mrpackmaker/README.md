@@ -5,7 +5,9 @@ A professional AI-powered web application that automatically generates fully fun
 ## Quickstart (download & test)
 
 1. Install [Python 3.10+](https://python.org) and [Node.js 18+](https://nodejs.org).
-2. Double-click **`installer.bat`** (Windows). It installs everything, builds the UI, and starts the app.
+2. Start the installer (Windows):
+   - **Recommended:** double-click **`installer.vbs`** or **`install.bat`** — the PowerShell installer with a live progress spinner.
+   - Or double-click the classic **`installer.bat`** (plain batch, still supported).
 3. Your browser opens at **http://localhost:8000**.
 4. Click **New Project**, fill in the settings, then on the prompt step click **Quick pack (no AI)**.
 5. Review the mods, run **Check Compatibility**, click **Generate MRPack**, then **Download**.
@@ -59,13 +61,12 @@ Output/
 
 ### Quick Install (Windows)
 
-Run the included installer:
+Two installers are provided; both do the same seven steps and then start the app:
 
-```bash
-installer.bat
-```
+- **`install.bat`** / **`installer.vbs`** — the modern **PowerShell** installer (`install.ps1`). Shows an animated spinner and an elapsed timer for each step so it never looks frozen, and writes full output to `install-log.txt`.
+- **`installer.bat`** — the classic pure-batch installer, kept as a fallback.
 
-This will automatically:
+Either way it will automatically:
 1. Check Python and Node.js installation
 2. Create a Python virtual environment
 3. Install backend dependencies
@@ -75,6 +76,8 @@ This will automatically:
 7. Start the backend server (which also serves the built UI at http://localhost:8000)
 
 For subsequent launches, run `start.bat`.
+
+> The PowerShell installer runs with `-ExecutionPolicy Bypass` scoped to that single run — it does not change any system-wide policy.
 
 ### Manual Install
 
@@ -137,6 +140,13 @@ All settings can be edited from the in-app **Settings** page. `config.json` hold
 - **AI Settings**: Configure any OpenAI-compatible connection (LM Studio, Ollama or LiteLLM). Leave `model` empty to auto-select the first available model.
 - **Secrets**: Entered in the Settings page and stored encrypted; never placed in `config.json`.
 
+### Server host & port
+
+By default the backend binds to **`127.0.0.1:8000`** (loopback only). This is a local desktop app with no authentication, so it is not exposed to your network unless you opt in:
+
+- `MRPACK_HOST` — set to `0.0.0.0` to allow other machines on your LAN to reach it (only do this on a trusted network).
+- `MRPACK_PORT` — change the port (default `8000`).
+
 ### Choosing an AI provider (LM Studio / Ollama / LiteLLM)
 
 All supported providers speak the OpenAI chat-completions protocol, so switching between them is just a `provider` + `base_url` change. Selecting a known provider fills in the default local address automatically, so you usually only need to set `provider`:
@@ -175,7 +185,7 @@ If the AI is unavailable or returns unusable output, generation automatically fa
 ## Usage
 
 1. **(Optional) Start LM Studio, Ollama or LiteLLM** and select the model in the Settings page.
-2. **Start the app** with `installer.bat` (first time) or `start.bat`, then open `http://localhost:8000`.
+2. **Start the app** with `install.bat` / `installer.vbs` (first time) or `start.bat`, then open `http://localhost:8000`.
 3. **Create a project** — Minecraft version, loader, theme, difficulty, performance preference.
 4. **Generate**:
    - **Quick pack (no AI)** for an instant, reliable pack, or
@@ -233,10 +243,11 @@ python -m pytest -q
 ## Troubleshooting
 
 ### Installer appears to hang (step [4/7] "Installing collected packages")
-- **Close any running MrPackMaker window first.** A backend still serving on port 8000 locks files inside `venv`, so pip stalls while trying to replace packages on a re-install. Close it (Ctrl+C in its window) and run `installer.bat` again.
+- Prefer the PowerShell installer (`install.bat` / `installer.vbs`): it shows a spinner and elapsed timer so you can see it is still working, and logs everything to `install-log.txt`.
+- **Close any running MrPackMaker window first.** A backend still serving on port 8000 locks files inside `venv`, so pip stalls while trying to replace packages on a re-install. Close it (Ctrl+C in its window) and run the installer again.
 - **Windows console QuickEdit**: clicking inside the black window selects text and *pauses* the process until you press a key. If output froze after you clicked, press any key in the window.
 - **Antivirus**: real-time scanning can briefly hold large wheels (e.g. `cryptography`). Give it a moment, or allow-list the project folder.
-- The installer now runs pip with `--no-input` so it can no longer block waiting for a prompt.
+- Both installers run pip with `--no-input` so it can no longer block waiting for a prompt.
 
 ### AI Connection Failed
 - Ensure LM Studio / Ollama / LiteLLM is running and a model is loaded
