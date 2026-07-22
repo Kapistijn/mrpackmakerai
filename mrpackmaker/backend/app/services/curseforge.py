@@ -15,12 +15,37 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.curseforge.com/v1"
 GAME_ID = 432  # Minecraft
+MOD_CLASS_ID = 6  # Minecraft > Mods (excludes resource packs, worlds, plugins)
 
 LOADER_MAP = {
     LoaderType.FORGE: 1,
     LoaderType.FABRIC: 4,
     LoaderType.NEOFORGE: 6,
 }
+
+
+def _pick_best_file(
+    files: list[dict[str, Any]], mc_version: str, loader: LoaderType
+) -> dict[str, Any] | None:
+    """Choose the newest file that actually matches the MC version AND loader.
+
+    CurseForge's ``gameVersion``/``modLoaderType`` query is a coarse pre-filter,
+    so ``files[0]`` can still be a wrong-loader or older build. Selecting on the
+    file's own ``gameVersions`` list prevents shipping an incompatible jar.
+    """
+    if not files:
+        return None
+    loader_name = loader.value.lower()
+    mc = mc_version.lower()
+
+    def matches(file_data: dict[str, Any]) -> bool:
+        versions = [str(v).lower() for v in file_data.get("gameVersions", [])]
+        return mc in versions and loader_name in versions
+
+    candidates = [f for f in files if matches(f)]
+    pool = candidates or files
+    # Newest first by ISO fileDate; empty dates sort last.
+    return sorted(pool, key=lambda f: f.get("fileDate", ""), reverse=True)[0]
 
 
 class CurseForgeClient:
@@ -64,12 +89,15 @@ class CurseForgeClient:
 
         params: dict[str, Any] = {
             "gameId": GAME_ID,
+            # Restrict to actual mods; without classId the search also returns
+            # modpacks, resource packs, worlds and Bukkit plugins.
+            "classId": MOD_CLASS_ID,
             "searchFilter": query,
             "gameVersion": mc_version,
             "modLoaderType": LOADER_MAP.get(loader, 4),
             "pageSize": limit,
             "index": offset,
-            "sortField": 2,
+            "sortField": 2,  # Popularity
             "sortOrder": "desc",
         }
         if category:
@@ -94,7 +122,7 @@ class CurseForgeClient:
                     source=ModSource.CURSEFORGE,
                     name=mod.get("name", ""),
                     slug=slug,
-                    icon_url=mod.get("logo", {}).get("thumbnailUrl"),
+                    icon_url=mod.get("logo", {}).get("thumbnailUrl") if mod.get("logo") else None,
                     summary=mod.get("summary", ""),
                     downloads=mod.get("downloadCount", 0),
                     categories=[c.get("name", "") for c in mod.get("categories", [])],
@@ -145,7 +173,7 @@ class CurseForgeClient:
         params = {
             "gameVersion": mc_version,
             "modLoaderType": LOADER_MAP.get(loader, 4),
-            "pageSize": 10,
+            "pageSize": 50,
         }
         try:
             resp = await self._client.get(f"/mods/{mod_id}/files", params=params)
@@ -188,10 +216,10 @@ class CurseForgeClient:
             return None
 
         files = await self.get_files(mod_id, mc_version, loader)
-        if not files:
+        file_data = _pick_best_file(files, mc_version, loader)
+        if not file_data:
             return None
 
-        file_data = files[0]
         file_id = file_data.get("id", 0)
         download_url = await self.get_download_url(mod_id, file_id)
 
@@ -217,7 +245,7 @@ class CurseForgeClient:
             source=ModSource.CURSEFORGE,
             name=mod.get("name", ""),
             slug=slug,
-            icon_url=mod.get("logo", {}).get("thumbnailUrl"),
+            icon_url=mod.get("logo", {}).get("thumbnailUrl") if mod.get("logo") else None,
             summary=mod.get("summary", ""),
             downloads=mod.get("downloadCount", 0),
             categories=[c.get("name", "") for c in mod.get("categories", [])],

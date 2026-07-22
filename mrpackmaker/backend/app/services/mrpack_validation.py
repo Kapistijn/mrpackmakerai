@@ -9,6 +9,19 @@ from urllib.parse import urlparse
 from app.models.project import Project
 from app.schemas.mod import ModEntry
 
+# Modrinth's .mrpack format only permits downloads from an allowlist of hosts.
+# A pack that references any other host (notably CurseForge's forgecdn) is
+# rejected by the Modrinth App on import, so we must fail loudly at export
+# time instead of producing an unusable archive.
+ALLOWED_DOWNLOAD_HOSTS = (
+    "cdn.modrinth.com",
+    "github.com",
+    "raw.githubusercontent.com",
+    "objects.githubusercontent.com",
+    "gitlab.com",
+    "codeberg.org",
+)
+
 
 @dataclass(frozen=True)
 class ExportIssue:
@@ -34,6 +47,11 @@ def _safe_mod_filename(filename: str) -> bool:
         and ".." not in path.parts
         and not path.is_absolute()
     )
+
+
+def _host_allowed(netloc: str) -> bool:
+    host = netloc.lower().split("@")[-1].split(":")[0]
+    return any(host == allowed or host.endswith("." + allowed) for allowed in ALLOWED_DOWNLOAD_HOSTS)
 
 
 def validate_export_inputs(project: Project, mods: list[ModEntry]) -> list[ExportIssue]:
@@ -74,6 +92,17 @@ def validate_export_inputs(project: Project, mods: list[ModEntry]) -> list[Expor
             parsed = urlparse(mod.download_url)
             if parsed.scheme not in {"https", "http"} or not parsed.netloc:
                 issues.append(ExportIssue("download_invalid", f"{mod.name} has an invalid download URL."))
+            elif not _host_allowed(parsed.netloc):
+                issues.append(
+                    ExportIssue(
+                        "download_host_not_allowed",
+                        (
+                            f"{mod.name} downloads from '{parsed.netloc}', which the Modrinth pack "
+                            "format does not allow. CurseForge mods cannot be embedded as direct "
+                            "downloads; remove it or replace it with the Modrinth version."
+                        ),
+                    )
+                )
         if not (mod.hashes.sha1 or mod.hashes.sha512):
             issues.append(ExportIssue("hash_missing", f"{mod.name} has no SHA-1 or SHA-512 hash."))
         if not mod.file_size or mod.file_size <= 0:

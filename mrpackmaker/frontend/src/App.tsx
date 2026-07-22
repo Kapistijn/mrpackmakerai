@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import NewProject from './pages/NewProject';
 import ProjectBuilder from './pages/ProjectBuilder';
 import Settings from './pages/Settings';
+import ApiSettings from './pages/ApiSettings';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Route path="/new" element={<NewProject />} />
         <Route path="/project/:id" element={<ProjectBuilder />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/settings/api" element={<ApiSettings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

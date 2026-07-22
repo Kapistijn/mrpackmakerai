@@ -136,16 +136,97 @@ export interface CompatibilityReport {
   errors: string[];
 }
 
-export interface SettingsOverview {
-  ai: {
-    provider: string;
-    base_url: string;
-    model: string;
-    timeout_seconds: number;
-    max_tokens: number;
-    temperature: number;
-    configured: boolean;
-  };
-  voice: Record<string, string>;
-  mod_sources: Record<string, boolean>;
+export interface AISettingsPublic {
+  provider: string;
+  base_url: string;
+  model: string;
+  timeout_seconds: number;
+  max_tokens: number;
+  temperature: number;
+  context_size: number;
+  configured: boolean;
+  api_key_configured: boolean;
 }
+
+export interface VoiceSettingsPublic {
+  whisper_url: string;
+  tts_provider: string;
+  tts_base_url: string;
+  tts_model: string;
+  tts_voice: string;
+  tts_enabled: boolean;
+  tts_api_key_configured: boolean;
+}
+
+export interface MinecraftSettingsPublic {
+  default_version: string;
+  default_loader: string;
+}
+
+export interface SourcesSettingsPublic {
+  modrinth_enabled: boolean;
+  curseforge_enabled: boolean;
+}
+
+export interface SettingsOverview {
+  ai: AISettingsPublic;
+  voice: VoiceSettingsPublic;
+  minecraft: MinecraftSettingsPublic;
+  sources: SourcesSettingsPublic;
+  mod_sources: Record<string, boolean>;
+  modrinth_key_configured: boolean;
+  curseforge_key_configured: boolean;
+  modrinth_key_masked: string;
+  curseforge_key_masked: string;
+  admin_locked: boolean;
+}
+
+export interface AISettingsUpdate {
+  provider?: string;
+  base_url?: string;
+  model?: string;
+  timeout_seconds?: number;
+  max_tokens?: number;
+  temperature?: number;
+  context_size?: number;
+  api_key?: string;
+}
+
+export interface VoiceSettingsUpdate {
+  whisper_url?: string;
+  tts_provider?: string;
+  tts_base_url?: string;
+  tts_model?: string;
+  tts_voice?: string;
+  tts_api_key?: string;
+}
+
+export interface MinecraftSettingsUpdate {
+  default_version?: string;
+  default_loader?: string;
+}
+
+export interface SourcesSettingsUpdate {
+  modrinth_enabled?: boolean;
+  curseforge_enabled?: boolean;
+}
+
+export interface UnifiedSettingsUpdate {
+  ai?: AISettingsUpdate;
+  voice?: VoiceSettingsUpdate;
+  minecraft?: MinecraftSettingsUpdate;
+  sources?: SourcesSettingsUpdate;
+  modrinth_key?: string;
+  curseforge_key?: string;
+}
+
+export interface ApiTestResult {
+  ok: boolean;
+  service: string;
+  status_code?: number;
+  latency_ms?: number;
+  detail?: string;
+  info: Record<string, string>;
+}
+
+export type SecretName = 'modrinth' | 'curseforge' | 'ai' | 'tts';

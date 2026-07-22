@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import { AIProgressEvent, CompatStatus } from '../types';
-import { ArrowLeft, Play, Square, Download, Check, X, AlertTriangle, Loader2, Trash2, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Play, Zap, Square, Download, Check, X, AlertTriangle, Loader2, Trash2, ExternalLink } from 'lucide-react';
 
 const ProjectBuilder = () => {
   const { id } = useParams<{ id: string }>();
@@ -30,6 +30,19 @@ const ProjectBuilder = () => {
     },
     onError: (error) => {
       alert(`Failed to start generation: ${(error as Error).message}`);
+    },
+  });
+
+  // Quick generation never needs an AI provider, so it is the reliable path to
+  // always get a downloadable pack.
+  const quickMutation = useMutation({
+    mutationFn: () => api.startQuickGeneration(projectId),
+    onSuccess: () => {
+      setStep(3);
+      startStreaming();
+    },
+    onError: (error) => {
+      alert(`Failed to start quick generation: ${(error as Error).message}`);
     },
   });
 
@@ -73,6 +86,11 @@ const ProjectBuilder = () => {
           queryClient.invalidateQueries({ queryKey: ['project', projectId] });
           setStep(4);
         }
+        if (event.status === 'error') {
+          unsubscribe();
+          alert(`Generation failed: ${event.message}`);
+          setStep(2);
+        }
       },
       () => {
         unsubscribe();
@@ -97,6 +115,14 @@ const ProjectBuilder = () => {
     });
   };
 
+  const handleQuickGenerate = () => {
+    // Persist any prompt text so quick mode can still use it to steer search,
+    // but do not require it.
+    api.updateProject(projectId, { generation_prompt: generationPrompt }).then(() => {
+      quickMutation.mutate();
+    });
+  };
+
   const handleDownload = async () => {
     try {
       const blob = await api.downloadModpack(projectId);
@@ -113,9 +139,11 @@ const ProjectBuilder = () => {
     }
   };
 
-  const handleRemoveMod = async (modId: string) => {
+  // Match on source:id, not id alone: a Modrinth and a CurseForge mod can share
+  // the same numeric id, and matching by id would remove the wrong mod.
+  const handleRemoveMod = async (source: string, modId: string) => {
     if (!project) return;
-    const updatedMods = project.mods.filter((m) => m.id !== modId);
+    const updatedMods = project.mods.filter((m) => !(m.source === source && m.id === modId));
     try {
       await api.updateProject(projectId, { mods: updatedMods });
       queryClient.invalidateQueries({ queryKey: ['project', projectId] });
@@ -238,27 +266,50 @@ const ProjectBuilder = () => {
             value={generationPrompt}
             onChange={(e) => setGenerationPrompt(e.target.value)}
           />
+          <p className="text-sm text-gray-500 mt-3">
+            No AI model set up yet? Use <span className="text-gray-300 font-medium">Quick pack</span> to build a working modpack from the most popular compatible mods — no AI required.
+          </p>
           <div className="mt-6 flex justify-between">
             <button onClick={() => setStep(1)} className="btn btn-secondary">
               Back
             </button>
-            <button
-              onClick={handleGenerate}
-              disabled={generateMutation.isPending}
-              className="btn btn-primary inline-flex items-center gap-2"
-            >
-              {generateMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Starting...
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4" />
-                  Generate
-                </>
-              )}
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={handleQuickGenerate}
+                disabled={quickMutation.isPending || generateMutation.isPending}
+                className="btn btn-secondary inline-flex items-center gap-2"
+                title="Build a pack without AI"
+              >
+                {quickMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4" />
+                    Quick pack (no AI)
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleGenerate}
+                disabled={generateMutation.isPending || quickMutation.isPending}
+                className="btn btn-primary inline-flex items-center gap-2"
+              >
+                {generateMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4" />
+                    Generate with AI
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -266,7 +317,7 @@ const ProjectBuilder = () => {
       {/* Step 3: Generation Progress */}
       {step === 3 && (
         <div className="card">
-          <h2 className="text-xl font-semibold text-gray-100 mb-6">AI Generation Progress</h2>
+          <h2 className="text-xl font-semibold text-gray-100 mb-6">Generation Progress</h2>
           {progress && (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
@@ -276,11 +327,11 @@ const ProjectBuilder = () => {
               <div className="w-full bg-surface-border rounded-full h-2">
                 <div
                   className="bg-accent h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${(progress.step / progress.total_steps) * 100}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, (progress.step / (progress.total_steps || 7)) * 100))}%` }}
                 />
               </div>
               <div className="text-sm text-gray-400">
-                Step {progress.step} of {progress.total_steps}
+                Step {progress.step} of {progress.total_steps || 7}
               </div>
             </div>
           )}
@@ -303,13 +354,13 @@ const ProjectBuilder = () => {
           <h2 className="text-xl font-semibold text-gray-100 mb-6">Mod Overview ({project.mods.length} mods)</h2>
           {project.ai_summary && (
             <div className="mb-6 p-4 bg-surface-overlay rounded-lg">
-              <h3 className="font-medium text-gray-200 mb-2">AI Summary</h3>
+              <h3 className="font-medium text-gray-200 mb-2">Summary</h3>
               <p className="text-gray-400 text-sm">{project.ai_summary}</p>
             </div>
           )}
           <div className="space-y-3 max-h-[500px] overflow-y-auto">
             {project.mods.map((mod) => (
-              <div key={mod.id} className="flex items-center gap-4 p-4 bg-surface-overlay rounded-lg">
+              <div key={`${mod.source}:${mod.id}`} className="flex items-center gap-4 p-4 bg-surface-overlay rounded-lg">
                 {mod.icon_url && (
                   <img src={mod.icon_url} alt={mod.name} className="w-12 h-12 rounded" />
                 )}
@@ -334,7 +385,7 @@ const ProjectBuilder = () => {
                   </a>
                 </div>
                 <button
-                  onClick={() => handleRemoveMod(mod.id)}
+                  onClick={() => handleRemoveMod(mod.source, mod.id)}
                   className="btn btn-danger p-2"
                   title="Remove mod"
                 >
@@ -369,7 +420,7 @@ const ProjectBuilder = () => {
       {step === 5 && compatibilityReport && (
         <div className="card">
           <h2 className="text-xl font-semibold text-gray-100 mb-6">Compatibility Report</h2>
-          
+
           <div className={`mb-6 p-4 rounded-lg flex items-center gap-3 ${
             compatibilityReport.status === CompatStatus.OK ? 'bg-green-900/30' :
             compatibilityReport.status === CompatStatus.WARN ? 'bg-yellow-900/30' :

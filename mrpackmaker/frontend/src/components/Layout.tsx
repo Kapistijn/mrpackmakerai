@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Blocks, Home, Plus, Settings } from 'lucide-react';
+import { Blocks, Home, KeyRound, Plus, Settings } from 'lucide-react';
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
@@ -43,6 +43,15 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                 >
                   <Settings className="w-4 h-4" />
                   <span>Settings</span>
+                </Link>
+                <Link
+                  to="/settings/api"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                    isActive('/settings/api') ? 'bg-surface-overlay text-accent' : 'text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  <KeyRound className="w-4 h-4" />
+                  <span>API</span>
                 </Link>
               </div>
             </div>

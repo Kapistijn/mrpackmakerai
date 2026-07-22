@@ -1,4 +1,4 @@
-"""Provider boundary for LM Studio, LiteLLM/Ollama and similar APIs.
+"""Provider boundary for LM Studio, Ollama, LiteLLM and similar APIs.
 
 All currently supported AI backends expose the OpenAI chat-completions shape.
 Using one implementation behind a small protocol means adding a provider is a
@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ValidationError
@@ -24,6 +24,21 @@ T = TypeVar("T", bound=BaseModel)
 
 class AIProviderError(RuntimeError):
     """A provider could not accept a request or return a usable response."""
+
+
+def _is_response_format_error(exc: Exception) -> bool:
+    """Heuristic: did a provider reject the ``response_format`` parameter?
+
+    Not every OpenAI-compatible server implements JSON mode. Older Ollama
+    builds and some LM Studio models return a 400 for the ``response_format``
+    field. We detect that by the message text, or fall back to treating any
+    Bad Request as a likely unsupported-parameter error, since the safe
+    recovery (drop the flag and rely on the prompt) is harmless either way.
+    """
+    text = str(exc).lower()
+    if "response_format" in text or "response format" in text or "json_object" in text:
+        return True
+    return getattr(exc, "status_code", None) == 400
 
 
 @dataclass(frozen=True)
@@ -67,6 +82,9 @@ class OpenAICompatibleProvider:
             max_retries=1,
         )
         self._model: str | None = settings.model or None
+        # Assume native JSON mode until a provider proves it does not support
+        # it; once disabled we stop sending response_format for this instance.
+        self._supports_json_mode: bool = True
 
     async def close(self) -> None:
         await self._client.close()
@@ -115,6 +133,35 @@ class OpenAICompatibleProvider:
         """Compatibility helper used by the old health endpoint and scripts."""
         return (await self.connection_status()).reachable
 
+    async def _create_completion(self, model: str, messages: list[dict[str, str]]) -> Any:
+        """Call chat-completions, transparently degrading JSON mode.
+
+        If the provider rejects ``response_format`` (older Ollama builds, some
+        models) we retry the same request once without it and rely on the
+        prompt to keep the output JSON. The flag is remembered so subsequent
+        calls on this instance skip the doomed attempt entirely.
+        """
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": self._settings.temperature,
+            "max_tokens": self._settings.max_tokens,
+        }
+        if self._supports_json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+        try:
+            return await self._client.chat.completions.create(**kwargs)  # type: ignore[arg-type]
+        except Exception as exc:
+            if self._supports_json_mode and _is_response_format_error(exc):
+                logger.info(
+                    "%s rejected response_format; retrying without JSON mode",
+                    self.provider_id,
+                )
+                self._supports_json_mode = False
+                kwargs.pop("response_format", None)
+                return await self._client.chat.completions.create(**kwargs)  # type: ignore[arg-type]
+            raise
+
     async def chat_json(
         self,
         system_prompt: str,
@@ -129,13 +176,7 @@ class OpenAICompatibleProvider:
 
         for attempt in range(2):
             try:
-                response = await self._client.chat.completions.create(
-                    model=model,
-                    messages=messages,  # type: ignore[arg-type]
-                    temperature=self._settings.temperature,
-                    max_tokens=self._settings.max_tokens,
-                    response_format={"type": "json_object"},
-                )
+                response = await self._create_completion(model, messages)
                 content = response.choices[0].message.content or "{}"
                 return schema.model_validate(json.loads(content))
             except (json.JSONDecodeError, ValidationError) as exc:
@@ -152,6 +193,8 @@ class OpenAICompatibleProvider:
                         ),
                     }
                 )
+            except AIProviderError:
+                raise
             except Exception as exc:
                 raise AIProviderError(
                     f"{self.provider_id} failed while generating {schema.__name__}: {exc}"

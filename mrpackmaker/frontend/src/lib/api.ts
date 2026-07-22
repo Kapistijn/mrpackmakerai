@@ -1,4 +1,4 @@
-import { Project, ProjectListItem, ProjectSettings, ModEntry, AIProgressEvent, CompatibilityReport } from '../types';
+import { Project, ProjectListItem, ProjectSettings, ModEntry, AIProgressEvent, CompatibilityReport, SettingsOverview, UnifiedSettingsUpdate, SecretName, ApiTestResult } from '../types';
 
 const API_BASE = '/api';
 
@@ -30,15 +30,59 @@ class ApiClient {
 
   // Settings (all public methods intentionally omit integration secrets)
   async getSettings() {
-    return this.request<import('../types').SettingsOverview>('/settings');
+    return this.request<SettingsOverview>('/settings');
   }
 
-  async testAiConnection(): Promise<{ provider: string; reachable: boolean; active_model?: string; detail?: string }> {
+  // Unified settings update. Secrets are stored encrypted server-side; sending
+  // an empty string for a key clears it (a dedicated delete also exists).
+  async updateSettings(update: UnifiedSettingsUpdate): Promise<SettingsOverview> {
+    return this.request('/settings/config', {
+      method: 'PATCH',
+      body: JSON.stringify(update),
+    });
+  }
+
+  async deleteSecret(name: SecretName): Promise<SettingsOverview> {
+    return this.request(`/settings/secrets/${name}`, { method: 'DELETE' });
+  }
+
+  async testAiConnection(): Promise<ApiTestResult> {
     return this.request('/settings/ai/test', { method: 'POST' });
+  }
+
+  async testModrinth(): Promise<ApiTestResult> {
+    return this.request('/settings/modrinth/test', { method: 'POST' });
+  }
+
+  async testCurseforge(): Promise<ApiTestResult> {
+    return this.request('/settings/curseforge/test', { method: 'POST' });
   }
 
   async getAiModels(): Promise<{ provider: string; models: string[]; selected_model?: string }> {
     return this.request('/settings/ai/models');
+  }
+
+  // Choosing the active model is not a secret, so no admin token is required.
+  // An empty string re-enables backend auto-selection of the first model.
+  async setAiModel(model: string): Promise<SettingsOverview['ai']> {
+    return this.request('/settings/ai/model', {
+      method: 'POST',
+      body: JSON.stringify({ model }),
+    });
+  }
+
+  // Streams a synthesized sample back as an audio blob for playback.
+  async testTts(text?: string): Promise<Blob> {
+    const response = await fetch(`${API_BASE}/settings/voice/tts/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(text ? { text } : {}),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'TTS test failed' }));
+      throw new Error(typeof error.detail === 'string' ? error.detail : 'TTS test failed');
+    }
+    return response.blob();
   }
 
   // Projects
@@ -93,8 +137,15 @@ class ApiClient {
   }
 
   // AI Generation
-  async startGeneration(projectId: number): Promise<{ status: string; project_id: number }> {
-    return this.request<{ status: string; project_id: number }>(`/ai/generate/${projectId}`, {
+  async startGeneration(projectId: number): Promise<{ status: string; project_id: number; mode?: string }> {
+    return this.request<{ status: string; project_id: number; mode?: string }>(`/ai/generate/${projectId}`, {
+      method: 'POST',
+    });
+  }
+
+  // AI-free generation: always available, does not need a reachable AI provider.
+  async startQuickGeneration(projectId: number): Promise<{ status: string; project_id: number; mode?: string }> {
+    return this.request<{ status: string; project_id: number; mode?: string }>(`/ai/generate/${projectId}/quick`, {
       method: 'POST',
     });
   }

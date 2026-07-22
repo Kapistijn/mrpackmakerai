@@ -34,14 +34,39 @@ async def start_generation(project_id: int, db: AsyncSession = Depends(get_db)):
     if not connection.reachable:
         raise HTTPException(
             status_code=503,
-            detail=connection.detail or "Configured AI provider is unavailable",
+            detail=(
+                (connection.detail or "Configured AI provider is unavailable")
+                + " — you can still use Quick generate to build a pack without AI."
+            ),
         )
 
     project.status = ProjectStatus.GENERATING.value
     await db.commit()
-    orchestrator.start_generation(project_id)
+    orchestrator.start_generation(project_id, use_ai=True)
 
-    return {"status": "started", "project_id": project_id}
+    return {"status": "started", "project_id": project_id, "mode": "ai"}
+
+
+@router.post("/generate/{project_id}/quick")
+async def start_quick_generation(project_id: int, db: AsyncSession = Depends(get_db)):
+    """Generate a modpack without any AI provider.
+
+    This selects the most downloaded compatible mods for the project's version,
+    loader and theme, so a valid pack can always be produced and downloaded even
+    when no AI backend is configured or reachable.
+    """
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if project.status == ProjectStatus.GENERATING.value or orchestrator.is_active(project_id):
+        raise HTTPException(status_code=409, detail="Generation already in progress")
+
+    project.status = ProjectStatus.GENERATING.value
+    await db.commit()
+    orchestrator.start_generation(project_id, use_ai=False)
+
+    return {"status": "started", "project_id": project_id, "mode": "quick"}
 
 
 @router.get("/generate/{project_id}/stream")

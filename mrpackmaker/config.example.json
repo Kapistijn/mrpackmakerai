@@ -5,13 +5,23 @@
     "model": "",
     "timeout_seconds": 45,
     "max_tokens": 4096,
-    "temperature": 0.2
+    "temperature": 0.2,
+    "context_size": 4096
   },
-  "apis": {
+  "minecraft": {
+    "default_version": "1.21.1",
+    "default_loader": "neoforge"
   },
+  "sources": {
+    "modrinth_enabled": true,
+    "curseforge_enabled": true
+  },
+  "apis": {},
   "voice": {
     "whisper_url": "http://localhost:9000",
     "tts_provider": "disabled",
-    "tts_base_url": ""
+    "tts_base_url": "",
+    "tts_model": "",
+    "tts_voice": "alloy"
   }
 }
