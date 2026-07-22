@@ -93,7 +93,7 @@ For subsequent launches, run `start.bat`.
 
 3. **Install backend dependencies**
    ```bash
-   pip install -r backend/requirements.txt
+   python -m pip install -r backend/requirements.txt
    ```
 
 4. **Install frontend dependencies and build**
@@ -231,6 +231,12 @@ python -m pytest -q
 - `GET /api/modpack/{id}/download` - Download .mrpack
 
 ## Troubleshooting
+
+### Installer appears to hang (step [4/7] "Installing collected packages")
+- **Close any running MrPackMaker window first.** A backend still serving on port 8000 locks files inside `venv`, so pip stalls while trying to replace packages on a re-install. Close it (Ctrl+C in its window) and run `installer.bat` again.
+- **Windows console QuickEdit**: clicking inside the black window selects text and *pauses* the process until you press a key. If output froze after you clicked, press any key in the window.
+- **Antivirus**: real-time scanning can briefly hold large wheels (e.g. `cryptography`). Give it a moment, or allow-list the project folder.
+- The installer now runs pip with `--no-input` so it can no longer block waiting for a prompt.
 
 ### AI Connection Failed
 - Ensure LM Studio / Ollama / LiteLLM is running and a model is loaded

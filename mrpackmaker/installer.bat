@@ -1,9 +1,13 @@
 @echo off
 setlocal enabledelayedexpansion
+cd /d "%~dp0"
 
 echo ========================================
-echo MrPackMaker Installer (beta 1.3)
+echo MrPackMaker Installer (beta 1.5.1)
 echo ========================================
+echo.
+echo Tip: if this window ever seems frozen, click inside it and press a key.
+echo Windows console "QuickEdit" pauses output when text is selected.
 echo.
 
 REM Check Python
@@ -51,12 +55,25 @@ if not exist venv (
 echo.
 
 REM Install Python packages
+REM Use the venv interpreter directly and run pip non-interactively. Invoking
+REM pip as `python -m pip` avoids the Windows "To modify pip" self-modify error,
+REM and --no-input stops pip from ever blocking on a prompt (a common cause of
+REM the installer appearing to hang at "Installing collected packages"). If a
+REM previous MrPackMaker server is still running it can lock files in the venv;
+REM close it first so pip can replace packages instead of stalling.
 echo [4/7] Installing Python packages...
-call venv\Scripts\activate.bat
-pip install --upgrade pip
-pip install -r backend\requirements.txt
+set "VENV_PY=venv\Scripts\python.exe"
+"%VENV_PY%" -m pip install --no-input --disable-pip-version-check --upgrade pip
+if errorlevel 1 (
+    echo ERROR: Failed to upgrade pip
+    pause
+    exit /b 1
+)
+"%VENV_PY%" -m pip install --no-input --disable-pip-version-check --timeout 60 --retries 3 -r backend\requirements.txt
 if errorlevel 1 (
     echo ERROR: Failed to install Python packages
+    echo If this happened on a re-install, make sure no MrPackMaker window is
+    echo still running (it can lock files in the venv), then run installer.bat again.
     pause
     exit /b 1
 )
@@ -135,9 +152,8 @@ echo Press Ctrl+C to stop the server
 echo.
 
 REM Start backend (serves the built frontend at http://localhost:8000)
-call venv\Scripts\activate.bat
 start "" /b powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 2; Start-Process 'http://localhost:8000'"
 cd backend
-python run.py
+"..\venv\Scripts\python.exe" run.py
 
 pause
