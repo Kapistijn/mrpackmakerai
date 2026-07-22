@@ -22,12 +22,30 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+# Known OpenAI-compatible provider presets.  Selecting one of these as the AI
+# provider supplies a sensible default ``base_url`` when the user has not set
+# one explicitly, so switching to Ollama is a one-word change instead of having
+# to remember the port.  Unknown providers keep whatever ``base_url`` is given.
+PROVIDER_PRESETS: dict[str, str] = {
+    "lmstudio": "http://localhost:1234/v1",
+    "ollama": "http://localhost:11434/v1",
+    "litellm": "http://localhost:4000/v1",
+}
+
+
+def default_base_url_for(provider: str) -> str | None:
+    """Return the preset ``base_url`` for a known provider, else ``None``."""
+    return PROVIDER_PRESETS.get((provider or "").strip().lower())
+
+
 class AIConfig(BaseModel):
     """Settings shared by every OpenAI-compatible AI provider.
 
-    LM Studio and LiteLLM are both OpenAI-compatible, so switching between them
-    is purely a matter of ``provider`` + ``base_url`` (+ optional ``api_key`` for
-    LiteLLM). Only one provider is active at a time.
+    LM Studio, Ollama and LiteLLM are all OpenAI-compatible, so switching
+    between them is purely a matter of ``provider`` + ``base_url`` (+ optional
+    ``api_key`` for LiteLLM). Only one provider is active at a time. Selecting a
+    known provider (see :data:`PROVIDER_PRESETS`) fills in the default
+    ``base_url`` automatically when one is not set explicitly.
     """
 
     provider: str = "lmstudio"
@@ -165,6 +183,9 @@ def load_config() -> AppConfig:
     # new configuration and API responses use the unambiguous ``base_url``.
     if "base_url" not in ai_data and "url" in ai_data:
         ai_data["base_url"] = ai_data.pop("url")
+    # Remember whether the address was pinned by the user before we start
+    # applying defaults, so a provider preset only ever fills an *unset* one.
+    base_url_explicit = ("base_url" in ai_data) or (os.getenv("MRPACK_AI_BASE_URL") is not None)
 
     apis_data = dict(data.get("apis", {}))
     minecraft_data = dict(data.get("minecraft", {}))
@@ -173,8 +194,17 @@ def load_config() -> AppConfig:
     security_data = dict(data.get("security", {}))
     stored_secrets = SecretStore(_repo_root() / "data").load()
 
-    ai_data["provider"] = _environment_or(ai_data, "MRPACK_AI_PROVIDER", ai_data.get("provider", "lmstudio"))
-    ai_data["base_url"] = _environment_or(ai_data, "MRPACK_AI_BASE_URL", ai_data.get("base_url", "http://localhost:1234/v1"))
+    resolved_provider = _environment_or(ai_data, "MRPACK_AI_PROVIDER", ai_data.get("provider", "lmstudio"))
+    ai_data["provider"] = resolved_provider
+    # A known provider preset supplies the default base_url only when the user
+    # did not set one explicitly (config.json / legacy ``url`` / the env var).
+    preset_base_url = default_base_url_for(resolved_provider)
+    if not base_url_explicit and preset_base_url:
+        ai_data["base_url"] = preset_base_url
+    else:
+        ai_data["base_url"] = _environment_or(
+            ai_data, "MRPACK_AI_BASE_URL", ai_data.get("base_url", "http://localhost:1234/v1")
+        )
     ai_data["model"] = _environment_or(ai_data, "MRPACK_AI_MODEL", ai_data.get("model", ""))
     ai_data["api_key"] = _environment_or(
         ai_data,
