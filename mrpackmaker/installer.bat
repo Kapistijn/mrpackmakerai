@@ -54,22 +54,19 @@ if not exist venv (
 )
 echo.
 
-REM Install Python packages
-REM Use the venv interpreter directly and run pip non-interactively. Invoking
-REM pip as `python -m pip` avoids the Windows "To modify pip" self-modify error,
-REM and --no-input stops pip from ever blocking on a prompt (a common cause of
-REM the installer appearing to hang at "Installing collected packages"). If a
-REM previous MrPackMaker server is still running it can lock files in the venv;
-REM close it first so pip can replace packages instead of stalling.
+REM Install Python packages.
+REM We deliberately do NOT run a separate `pip install --upgrade pip`: on
+REM Windows that self-modify errors out ("To modify pip, please run ...") and
+REM re-downloads the ~1.8 MB pip wheel on every run for no benefit. The bundled
+REM pip installs wheels fine. Flags used:
+REM   --no-input                 never block waiting for a prompt (anti-hang)
+REM   --disable-pip-version-check skip the version-check network call + notice
+REM   --prefer-binary            use wheels, never fall back to a slow build
 echo [4/7] Installing Python packages...
+echo     Please wait - this can take up to a minute. During "Installing
+ echo     collected packages" pip prints no output; that is normal, not frozen.
 set "VENV_PY=venv\Scripts\python.exe"
-"%VENV_PY%" -m pip install --no-input --disable-pip-version-check --upgrade pip
-if errorlevel 1 (
-    echo ERROR: Failed to upgrade pip
-    pause
-    exit /b 1
-)
-"%VENV_PY%" -m pip install --no-input --disable-pip-version-check --timeout 60 --retries 3 -r backend\requirements.txt
+"%VENV_PY%" -m pip install --no-input --disable-pip-version-check --prefer-binary -r backend\requirements.txt
 if errorlevel 1 (
     echo ERROR: Failed to install Python packages
     echo If this happened on a re-install, make sure no MrPackMaker window is
@@ -80,10 +77,18 @@ if errorlevel 1 (
 echo Python packages installed successfully
 echo.
 
-REM Install frontend dependencies
+REM Install frontend dependencies.
+REM `npm ci` is faster and deterministic when a lockfile exists; fall back to
+REM `npm install` otherwise. --no-audit/--no-fund skip slow post-install network
+REM calls and --prefer-offline reuses the npm cache.
 echo [5/7] Installing frontend dependencies...
+echo     Please wait - installing Node modules (usually the slowest step).
 cd frontend
-call npm install
+if exist package-lock.json (
+    call npm ci --no-audit --no-fund --prefer-offline
+) else (
+    call npm install --no-audit --no-fund --prefer-offline
+)
 if errorlevel 1 (
     echo ERROR: Failed to install frontend dependencies
     cd ..
