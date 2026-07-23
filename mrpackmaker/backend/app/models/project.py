@@ -1,63 +1,49 @@
 """SQLAlchemy project model."""
-
 from __future__ import annotations
-
-from datetime import datetime, timezone
-
-from sqlalchemy import DateTime, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
-
+from datetime import datetime,timezone
+from sqlalchemy import DateTime,Integer,String,Text
+from sqlalchemy.orm import Mapped,mapped_column
 from app.db.session import Base
-from app.models.enums import LoaderType, ProjectStatus, ThemeType
+from app.models.enums import LoaderType,ProjectStatus,ThemeType
 
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
+def _utcnow():return datetime.now(timezone.utc)
 class Project(Base):
-    __tablename__ = "projects"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    minecraft_version: Mapped[str] = mapped_column(String(32), nullable=False)
-    loader: Mapped[str] = mapped_column(String(32), nullable=False)
-    loader_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    theme: Mapped[str] = mapped_column(String(32), nullable=False)
-    theme_custom: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    difficulty: Mapped[str] = mapped_column(String(32), nullable=False, default="normal")
-    performance_preference: Mapped[str] = mapped_column(String(32), nullable=False, default="balanced")
-    generation_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    minimum_mods: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    maximum_mods: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    minimum_downloads: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    # --- 1.8.7: functional advanced configuration -------------------------
-    target_ram_gb: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    target_fps: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    shader_support: Mapped[str] = mapped_column(String(16), nullable=False, default="off")
-    shader_quality: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    resourcepack_support: Mapped[bool] = mapped_column(default=False)
-    required_mods_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
-    forbidden_mods_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
-    ai_creativity: Mapped[str] = mapped_column(String(16), nullable=False, default="balanced")
-    ai_strictness: Mapped[str] = mapped_column(String(16), nullable=False, default="balanced")
-    discovery_depth: Mapped[str] = mapped_column(String(16), nullable=False, default="standard")
-    # ----------------------------------------------------------------------
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default=ProjectStatus.DRAFT.value)
-    mods_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
-    resolved_loader_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    mrpack_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    settings_locked: Mapped[bool] = mapped_column(default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
-
-    def loader_enum(self) -> LoaderType:
-        return LoaderType(self.loader)
-
-    def theme_enum(self) -> ThemeType:
-        return ThemeType(self.theme)
-
-    def status_enum(self) -> ProjectStatus:
-        return ProjectStatus(self.status)
+    __tablename__='projects'
+    id:Mapped[int]=mapped_column(Integer,primary_key=True,autoincrement=True)
+    name:Mapped[str]=mapped_column(String(255),nullable=False)
+    description:Mapped[str]=mapped_column(Text,nullable=False,default='')
+    minecraft_version:Mapped[str]=mapped_column(String(32),nullable=False)
+    loader:Mapped[str]=mapped_column(String(32),nullable=False)
+    loader_version:Mapped[str|None]=mapped_column(String(64),nullable=True)
+    theme:Mapped[str]=mapped_column(String(32),nullable=False)
+    theme_custom:Mapped[str|None]=mapped_column(String(255),nullable=True)
+    difficulty:Mapped[str]=mapped_column(String(32),nullable=False,default='normal')
+    performance_preference:Mapped[str]=mapped_column(String(32),nullable=False,default='balanced')
+    generation_prompt:Mapped[str]=mapped_column(Text,nullable=False,default='')
+    minimum_mods:Mapped[int|None]=mapped_column(Integer,nullable=True)
+    maximum_mods:Mapped[int|None]=mapped_column(Integer,nullable=True)
+    minimum_downloads:Mapped[int]=mapped_column(Integer,nullable=False,default=0)
+    target_ram_gb:Mapped[int|None]=mapped_column(Integer,nullable=True)
+    target_fps:Mapped[int|None]=mapped_column(Integer,nullable=True)
+    shader_support:Mapped[str]=mapped_column(String(16),nullable=False,default='off')
+    shader_quality:Mapped[str|None]=mapped_column(String(16),nullable=True)
+    resourcepack_support:Mapped[bool]=mapped_column(default=False)
+    required_mods_json:Mapped[str]=mapped_column(Text,nullable=False,default='[]')
+    forbidden_mods_json:Mapped[str]=mapped_column(Text,nullable=False,default='[]')
+    ai_creativity:Mapped[str]=mapped_column(String(16),nullable=False,default='balanced')
+    ai_strictness:Mapped[str]=mapped_column(String(16),nullable=False,default='balanced')
+    discovery_depth:Mapped[str]=mapped_column(String(16),nullable=False,default='standard')
+    status:Mapped[str]=mapped_column(String(32),nullable=False,default=ProjectStatus.DRAFT.value)
+    mods_json:Mapped[str]=mapped_column(Text,nullable=False,default='[]')
+    resolved_loader_version:Mapped[str|None]=mapped_column(String(64),nullable=True)
+    ai_summary:Mapped[str|None]=mapped_column(Text,nullable=True)
+    mrpack_path:Mapped[str|None]=mapped_column(String(512),nullable=True)
+    settings_locked:Mapped[bool]=mapped_column(default=False)
+    created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=_utcnow)
+    updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=_utcnow,onupdate=_utcnow)
+    def __init__(self,**kwargs):
+        defaults={'description':'','theme_custom':None,'difficulty':'normal','performance_preference':'balanced','generation_prompt':'','minimum_downloads':0,'target_ram_gb':None,'target_fps':None,'shader_support':'off','shader_quality':None,'resourcepack_support':False,'required_mods_json':'[]','forbidden_mods_json':'[]','ai_creativity':'balanced','ai_strictness':'balanced','discovery_depth':'standard','status':ProjectStatus.DRAFT.value,'mods_json':'[]','resolved_loader_version':None,'ai_summary':None,'mrpack_path':None,'settings_locked':False}
+        defaults.update(kwargs);super().__init__(**defaults)
+    def loader_enum(self)->LoaderType:return LoaderType(self.loader)
+    def theme_enum(self)->ThemeType:return ThemeType(self.theme)
+    def status_enum(self)->ProjectStatus:return ProjectStatus(self.status)
