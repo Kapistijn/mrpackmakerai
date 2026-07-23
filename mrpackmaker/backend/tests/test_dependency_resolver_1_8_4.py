@@ -20,6 +20,11 @@ class Provider:
 def resolver(values): return DependencyResolver(ModResolver(registry=ModSourceRegistry([Provider(values)])))
 def test_required_dependency_is_added():
     root=mod('root',[ModDependency(project_id='library', dependency_type='required')]); result=run(resolver({'library':mod('library')}).resolve_pack([root],'1.20.1',LoaderType.FABRIC)); assert result.complete and {m.id for m in result.mods} == {'root','library'}
+def test_nested_required_dependencies_are_closed_before_failure():
+    root=mod('root',[ModDependency(project_id='library', dependency_type='required')])
+    library=mod('library',[ModDependency(project_id='transitive', dependency_type='required')])
+    result=run(resolver({'library':library,'transitive':mod('transitive')}).resolve_pack([root],'1.20.1',LoaderType.FABRIC))
+    assert result.complete and {m.id for m in result.mods} == {'root','library','transitive'} and result.passes == 3
 def test_embedded_is_not_added():
     root=mod('root',[ModDependency(project_id='embedded', dependency_type='embedded')]); result=run(resolver({'embedded':mod('embedded')}).resolve_pack([root],'1.20.1',LoaderType.FABRIC)); assert result.complete and [m.id for m in result.mods] == ['root']
 def test_wrong_loader_rejected():
