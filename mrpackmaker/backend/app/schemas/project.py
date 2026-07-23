@@ -29,6 +29,12 @@ class ProjectSettings(BaseModel):
     ai_creativity: str = "balanced"
     ai_strictness: str = "balanced"
     discovery_depth: str = "standard"
+    gameplay_style: list[str] = Field(default_factory=list)
+    qol_level: str | None = None
+    hardware_profile: str | None = None
+    multiplayer_mode: str | None = None
+    world_style: str | None = None
+    progression: str | None = None
     @field_validator("name")
     @classmethod
     def name_not_empty(cls, v: str) -> str:
@@ -60,9 +66,15 @@ class ProjectUpdate(BaseModel):
     ai_creativity: str | None = None
     ai_strictness: str | None = None
     discovery_depth: str | None = None
+    gameplay_style: list[str] | None = None
+    qol_level: str | None = None
+    hardware_profile: str | None = None
+    multiplayer_mode: str | None = None
+    world_style: str | None = None
+    progression: str | None = None
     mods: list[ModEntry] | None = None
 class ProjectResponse(BaseModel):
-    id: int; name: str; description: str; minecraft_version: str; loader: LoaderType; loader_version: str | None; theme: ThemeType; theme_custom: str | None; difficulty: DifficultyType; performance_preference: PerformancePreference; generation_prompt: str; minimum_mods: int | None; maximum_mods: int | None; minimum_downloads: int; target_ram_gb: int | None; target_fps: int | None; shader_support: ShaderSupport; shader_quality: str | None; resourcepack_support: bool; required_mods: list[str]; forbidden_mods: list[str]; ai_creativity: str; ai_strictness: str; discovery_depth: str; status: ProjectStatus; mods: list[dict[str, Any]]; resolved_loader_version: str | None; ai_summary: str | None; mrpack_path: str | None; settings_locked: bool; created_at: datetime; updated_at: datetime
+    id: int; name: str; description: str; minecraft_version: str; loader: LoaderType; loader_version: str | None; theme: ThemeType; theme_custom: str | None; difficulty: DifficultyType; performance_preference: PerformancePreference; generation_prompt: str; minimum_mods: int | None; maximum_mods: int | None; minimum_downloads: int; target_ram_gb: int | None; target_fps: int | None; shader_support: ShaderSupport; shader_quality: str | None; resourcepack_support: bool; required_mods: list[str]; forbidden_mods: list[str]; ai_creativity: str; ai_strictness: str; discovery_depth: str; gameplay_style: list[str]; qol_level: str | None; hardware_profile: str | None; multiplayer_mode: str | None; world_style: str | None; progression: str | None; status: ProjectStatus; mods: list[dict[str, Any]]; resolved_loader_version: str | None; ai_summary: str | None; mrpack_path: str | None; settings_locked: bool; created_at: datetime; updated_at: datetime
     model_config = {"from_attributes": True}
 class ProjectListItem(BaseModel):
     id: int; name: str; minecraft_version: str; loader: LoaderType; status: ProjectStatus; created_at: datetime; updated_at: datetime
