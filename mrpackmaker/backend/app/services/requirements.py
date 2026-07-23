@@ -5,19 +5,20 @@ import re
 from dataclasses import dataclass
 @dataclass(frozen=True)
 class Requirements:
-    themes: tuple[str,...]=(); required_features: tuple[str,...]=(); forbidden_features: tuple[str,...]=(); minimum_mods: int|None=None; maximum_mods: int|None=None; minimum_downloads: int=0; multiplayer: bool=False; target_ram_gb: int|None=None; target_fps: int|None=None; shader_support: str|None=None; performance_preference: str|None=None; visual_quality: str|None=None; hardware_profile: str|None=None; multiplayer_mode: str|None=None; warnings: tuple[str,...]=()
+    themes: tuple[str,...]=(); required_features: tuple[str,...]=(); forbidden_features: tuple[str,...]=(); minimum_mods: int|None=None; maximum_mods: int|None=None; minimum_downloads: int=0; multiplayer: bool=False; target_ram_gb: int|None=None; target_fps: int|None=None; shader_support: str|None=None; performance_preference: str|None=None; visual_quality: str|None=None; hardware_profile: str|None=None; multiplayer_mode: str|None=None; world_style: str|None=None; progression: str|None=None; warnings: tuple[str,...]=()
     @property
     def target_count(self)->int: return self.maximum_mods or self.minimum_mods or 40
 
 def category_quotas(requirements: Requirements,target_count: int|None=None)->dict[str,int]:
     target=target_count or requirements.target_count; target=max(requirements.minimum_mods or 0,target)
     if requirements.maximum_mods is not None: target=min(target,requirements.maximum_mods)
-    text=' '.join((*requirements.themes,*requirements.required_features)).casefold(); categories=[]
+    text=' '.join((*requirements.themes,*requirements.required_features,requirements.world_style or '',requirements.progression or '')).casefold(); categories=[]
     if requirements.themes: categories.append((requirements.themes[0],.15))
     if any(t in text for t in ('qol','inventory','utility','storage')): categories.append(('qol',.20))
     if any(t in text for t in ('performance','fps','optimization')): categories.append(('performance',.10))
-    if any(t in text for t in ('worldgen','exploration','adventure','structures')): categories.append(('world',.15))
+    if any(t in text for t in ('worldgen','exploration','adventure','structures','world')): categories.append(('world',.15))
     if any(t in text for t in ('boss','combat','mobs')): categories.append(('combat',.15))
+    if requirements.progression and requirements.progression != 'fast': categories.append(('progression',.10))
     if not categories: categories.append(('requested',.50))
     quotas={name:max(1,int(target*share)) for name,share in categories}; quotas['remaining']=max(0,target-sum(quotas.values())); return quotas
 THEME_RULES={'horror':{'include':('horror','mobs','worldgen','sound','atmosphere','lighting','survival'),'exclude':('cobblemon','pokemon','technology','magic','farming')},'technology':{'include':('technology','automation','storage','utility'),'exclude':('magic',)},'magic':{'include':('magic','adventure','mobs'),'exclude':('technology',)},'adventure':{'include':('adventure','worldgen','mobs','structures'),'exclude':()}}
@@ -41,7 +42,10 @@ def parse_requirements(prompt: str, *, theme: str|None=None, minimum_mods: int|N
     detected=[name for name in THEME_RULES if re.search(rf'\b{re.escape(name)}\b',text)]
     if selected_theme in THEME_RULES and selected_theme not in detected: detected.insert(0,selected_theme)
     active=THEME_RULES.get(detected[0],{}) if detected else {}; required=list(active.get('include',())); forbidden=list(active.get('exclude',()))
-    required += [str(v).casefold() for v in advanced.get('gameplay_style',[]) if str(v).strip()]; required += [str(v).casefold() for v in advanced.get('required_mods',[]) if str(v).strip()]
+    gameplay=[str(v).casefold() for v in advanced.get('gameplay_style',[]) if str(v).strip()]; required += gameplay + [str(v).casefold() for v in advanced.get('required_mods',[]) if str(v).strip()]
+    world_style=_optional_text(advanced.get('world_style')); progression=_optional_text(advanced.get('progression'))
+    if world_style: required += [world_style,'worldgen']
+    if progression: required += [progression,'progression']
     if advanced.get('qol_level') in {'high','maximum'}: required += ['qol','inventory','ui','storage']
     fps=_optional_int(advanced.get('target_fps') or advanced.get('fps_target'))
     if _optional_text(advanced.get('shader_support')) not in (None,'none'): required += ['shader','performance']
@@ -52,13 +56,11 @@ def parse_requirements(prompt: str, *, theme: str|None=None, minimum_mods: int|N
     if re.search(r'monster|mob|zombie',text): required.append('mobs')
     if re.search(r'no magic|geen magie',text): forbidden.append('magic')
     if re.search(r'no technology|geen technologie',text): forbidden.append('technology')
-    parsed_min=_number(text,('at least','minimum','minimaal','minstens')); explicit_count=_number(text,(r'(?:with|met|of)\s*',)) if re.search(r'\d+\s+mods?\b',text) else None
-    if explicit_count is None:
-        match=re.search(r'\b(\d+)\s+mods?\b',text); explicit_count=int(match.group(1)) if match else None
-    parsed_max=_number(text,('at most','maximum','maximaal')); advanced_min=_optional_int(advanced.get('minimum_mods')) if advanced.get('minimum_mods') is not None else None; advanced_max=_optional_int(advanced.get('maximum_mods')) if advanced.get('maximum_mods') is not None else None
+    parsed_min=_number(text,('at least','minimum','minimaal','minstens')); match=re.search(r'\b(\d+)\s+mods?\b',text); explicit_count=int(match.group(1)) if match else None; parsed_max=_number(text,('at most','maximum','maximaal'))
+    advanced_min=_optional_int(advanced.get('minimum_mods')) if advanced.get('minimum_mods') is not None else None; advanced_max=_optional_int(advanced.get('maximum_mods')) if advanced.get('maximum_mods') is not None else None
     effective_min=minimum_mods if minimum_mods is not None else (advanced_min if advanced_min is not None else (parsed_min or explicit_count)); effective_max=maximum_mods if maximum_mods is not None else (advanced_max if advanced_max is not None else parsed_max)
     downloads=minimum_downloads if minimum_downloads else (_number(text,(r'minimum\s+downloads?',r'min(?:imum)?\s+downloads?',r'downloads?\s*[:=]')) or 0)
     mode=_optional_text(advanced.get('multiplayer_mode')); warnings=('minimum_mods exceeds maximum_mods',) if effective_min and effective_max and effective_min>effective_max else ()
-    return Requirements(tuple(dict.fromkeys(detected)),tuple(dict.fromkeys(required)),tuple(dict.fromkeys(forbidden)),effective_min,effective_max,max(0,downloads),bool(re.search(r'multiplayer|server|samen spelen',text)),_optional_int(advanced.get('target_ram_gb')),fps,_optional_text(advanced.get('shader_support')),_optional_text(advanced.get('performance_preference')),_optional_text(advanced.get('visual_quality')),_optional_text(advanced.get('hardware_profile')),mode,warnings)
+    return Requirements(tuple(dict.fromkeys(detected)),tuple(dict.fromkeys(required)),tuple(dict.fromkeys(forbidden)),effective_min,effective_max,max(0,downloads),bool(re.search(r'multiplayer|server|samen spelen',text)),_optional_int(advanced.get('target_ram_gb')),fps,_optional_text(advanced.get('shader_support')),_optional_text(advanced.get('performance_preference')),_optional_text(advanced.get('visual_quality')),_optional_text(advanced.get('hardware_profile')),mode,world_style,progression,warnings)
 def theme_matches(mod_text: str,requirements: Requirements)->bool:
     text=(mod_text or '').casefold(); return not any(re.search(rf'\b{re.escape(term)}\b',text) for term in requirements.forbidden_features)
