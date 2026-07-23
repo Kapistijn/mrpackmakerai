@@ -1,48 +1,46 @@
 # Changelog
 
+## 1.7.1
+
+Release-readiness verification pass focused on correctness, compatibility
+visibility, and preventing silent runtime assumptions.
+
+### Added
+
+- Compatibility metrics contract covering Minecraft/loader identity, pinned
+  loader version, dependency counts, duplicate projects, missing files/libraries,
+  incompatibilities, performance score, RAM/CPU/startup estimates, and download
+  size. Unknown machine-specific values remain null instead of pretending to be
+  measured.
+- Duplicate projects are now explicit compatibility errors, not merely hidden
+  during generation.
+- Regression tests cover cross-source identity, metrics nullability, enum
+  serialization, and pinned loader export behavior.
+
+### Hardened
+
+- Release metadata is now 1.7.1 for both backend and frontend.
+- The previous 1.7 loader picker, additive migration, safe deletion, prompt
+  pipeline, cross-catalog deduplication, and export pinning remain intact.
+
+### Verification note
+
+CI remains the source of truth for the full pytest suite and frontend build.
+This branch adds tests for the new behavior but does not claim a green result
+until GitHub Actions reports it.
+
 ## 1.7
 
 Public-release hardening and product foundation.
 
-### User-facing improvements
-
-- Added a loader-version endpoint backed by Modrinth compatible metadata.
-- Added loader-version selection to the new-project wizard, with stable release
-  prioritization, refresh, loading and error states.
-- Persisted the selected loader version through the API and additive SQLite
-  migration.
-- Export now honors a pinned loader version instead of silently replacing it
-  with the resolver's latest version.
-- Fixed the frontend delete-project false failure caused by parsing an empty
-  HTTP 204 response as JSON.
-- Delete now removes a generated `.mrpack` only when it is safely inside the
-  configured output directory.
-
-### AI and selection foundation
-
-- Added a structured prompt pipeline that normalizes sparse requests, extracts
-  minimum/maximum counts and exclusions, adds project invariants, and produces
-  a safe generation system prompt.
-- Added regression coverage for prompt expansion, safe empty prompts, and
-  cross-source identity deduplication.
-- Existing catalog deduplication is retained so equivalent Modrinth and
-  CurseForge projects collapse to one best downloadable entry.
-
-### Scope note
-
-The compatibility dashboard, per-mod explanations, advanced gameplay controls,
-multiplayer/server/shader profiles, and provider-backed prompt optimizer are
-planned follow-up slices. They should be added behind tested API contracts,
-not rushed into a single release branch.
+- Loader-version picker and persistence.
+- Structured prompt normalization.
+- Cross-catalog deduplication.
+- Safe project deletion and pinned export.
 
 ## 1.6.3
 
 Reliability and correctness release for the generation pipeline.
-
-- Correct Modrinth loader facet regression coverage.
-- Cross-catalog identity normalization and deduplication.
-- Regression tests for richer-entry selection and distinct projects.
-- Backend and frontend version metadata bumped to 1.6.3.
 
 ## 1.6.2
 
