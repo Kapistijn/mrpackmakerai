@@ -1,4 +1,4 @@
-"""Regression tests for the beta fixes: mod search, secrets, config, TTS guard."""
+"""Regression tests for search, secrets, config and TTS guards."""
 
 from __future__ import annotations
 
@@ -21,10 +21,9 @@ from app.services.tts import TTSClient, TTSError
 
 
 class ModrinthFacetsTests(unittest.IsolatedAsyncioTestCase):
-    """The original 'no mods' bug: facets must be ONE JSON array-of-arrays."""
+    """The original 'no mods' bug: facets must be one JSON array-of-arrays."""
 
     async def test_facets_are_a_single_json_array_param(self) -> None:
-        # A fresh cache key avoids returning a cached tuple from another test.
         modrinth_module.search_cache.clear()
         captured: dict[str, list[str]] = {}
 
@@ -39,13 +38,14 @@ class ModrinthFacetsTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.close()
 
-        # Exactly one facets parameter (not repeated), and valid array-of-arrays.
         self.assertEqual(len(captured["facets"]), 1)
         parsed = json.loads(captured["facets"][0])
         self.assertTrue(parsed and all(isinstance(group, list) for group in parsed))
         self.assertIn(["project_type:mod"], parsed)
         self.assertIn(["versions:1.20.1"], parsed)
-        self.assertIn(["loaders:fabric"], parsed)
+        # Modrinth's v2 search index exposes loaders through categories.
+        self.assertIn(["categories:fabric"], parsed)
+        self.assertNotIn(["loaders:fabric"], parsed)
 
 
 class SecretStoreTests(unittest.TestCase):
@@ -54,14 +54,10 @@ class SecretStoreTests(unittest.TestCase):
             store = SecretStore(Path(directory))
             store.update({"modrinth_key": "abc123", "ai_api_key": "sk-test"})
             self.assertEqual(store.load()["modrinth_key"], "abc123")
-
             store.remove(["modrinth_key"])
             reloaded = store.load()
             self.assertNotIn("modrinth_key", reloaded)
-            # Unrelated secrets survive a targeted delete.
             self.assertEqual(reloaded["ai_api_key"], "sk-test")
-
-            # Removing an unknown name is a safe no-op.
             store.remove(["does_not_exist"])
             self.assertEqual(store.load()["ai_api_key"], "sk-test")
 
