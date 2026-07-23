@@ -32,6 +32,18 @@ class Project(Base):
     minimum_mods: Mapped[int | None] = mapped_column(Integer, nullable=True)
     maximum_mods: Mapped[int | None] = mapped_column(Integer, nullable=True)
     minimum_downloads: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # --- 1.8.7: functional advanced configuration -------------------------
+    target_ram_gb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_fps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    shader_support: Mapped[str] = mapped_column(String(16), nullable=False, default="off")
+    shader_quality: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    resourcepack_support: Mapped[bool] = mapped_column(default=False)
+    required_mods_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    forbidden_mods_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    ai_creativity: Mapped[str] = mapped_column(String(16), nullable=False, default="balanced")
+    ai_strictness: Mapped[str] = mapped_column(String(16), nullable=False, default="balanced")
+    discovery_depth: Mapped[str] = mapped_column(String(16), nullable=False, default="standard")
+    # ----------------------------------------------------------------------
     status: Mapped[str] = mapped_column(String(32), nullable=False, default=ProjectStatus.DRAFT.value)
     mods_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     resolved_loader_version: Mapped[str | None] = mapped_column(String(64), nullable=True)

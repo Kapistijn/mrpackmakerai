@@ -31,6 +31,23 @@ class RequirementAnalysisSchema(BaseModel):
         return self
 
 
+class IntentAnalysisSchema(BaseModel):
+    """AI enrichment of the deterministic intent analysis.
+
+    The deterministic :class:`app.services.intent_analysis.IntentAnalysis` is
+    always produced first; this schema only lets a provider refine the goal and
+    extend the category / avoid lists. It can never weaken the deterministic
+    guarantees.
+    """
+
+    goal: str = ""
+    categories: list[str] = Field(default_factory=list)
+    avoid: list[str] = Field(default_factory=list)
+    realism_focus: bool = False
+    confidence: Literal["understood", "uncertain", "missing_information"] = "understood"
+    missing_information: list[str] = Field(default_factory=list)
+
+
 class GameplayAnalysis(BaseModel):
     gameplay_goals: list[str] = Field(default_factory=list)
     must_have_features: list[str] = Field(default_factory=list)

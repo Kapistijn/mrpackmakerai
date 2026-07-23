@@ -37,6 +37,10 @@ class ModEntry(BaseModel):
     file_size: int | None = None
     download_url: str | None = None
     hashes: ModHash = Field(default_factory=ModHash)
+    # Optional in-instance install location (e.g. shaderpacks/foo.zip). When
+    # unset the export writer derives it from the mod's categories, defaulting
+    # to mods/<file_name>.
+    install_path: str | None = None
 
 
 class ModSearchResult(BaseModel):
