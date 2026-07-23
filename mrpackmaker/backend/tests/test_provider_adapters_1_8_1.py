@@ -38,6 +38,7 @@ def test_modrinth_mapping_and_protocol():
         assert isinstance(adapter, ModrinthProvider)
         assert result[0].identity.sources["modrinth"] == "abc"
         assert json.loads(json.dumps(result[0].to_dict()))["source"] == "modrinth"
+
     run(exercise())
 
 
@@ -48,6 +49,7 @@ def test_curseforge_mapping_and_protocol():
         assert isinstance(adapter, CurseForgeProvider)
         assert result is not None and result.source is ModSource.CURSEFORGE
         assert result.files[0].sha512 == "sha512-value"
+
     run(exercise())
 
 
@@ -59,6 +61,7 @@ def test_missing_catalog_fields_raise_typed_error():
         adapter = ModrinthAdapter(Missing(), "1.20.1", Loader.FABRIC)
         with pytest.raises(InvalidResponseError):
             await adapter.get("abc")
+
     run(exercise())
 
 
@@ -83,6 +86,7 @@ def test_ai_adapter_capabilities_and_candidate_boundary():
         candidate = ModCandidate(identity, ModSource.MODRINTH, "abc", "example", "Example", "desc", 1, frozenset())
         selected = await adapter.select(brief, [candidate])
         assert selected[0].candidate is candidate and selected[0].reason == "matches request"
+
     run(exercise())
 
 
@@ -98,4 +102,5 @@ def test_ai_unknown_candidate_is_rejected():
         candidate = ModCandidate(identity, ModSource.MODRINTH, "abc", "example", "Example", "desc", 1, frozenset())
         with pytest.raises(InvalidResponseError):
             await adapter.select(brief, [candidate])
+
     run(exercise())
