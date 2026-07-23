@@ -1,4 +1,4 @@
-"""Requirement parsing and hard theme policy for generation."""
+"""Requirement parsing, structured targets, and deterministic quota planning."""
 
 from __future__ import annotations
 
@@ -20,6 +20,32 @@ class Requirements:
     @property
     def target_count(self) -> int:
         return self.maximum_mods or self.minimum_mods or 40
+
+
+def category_quotas(requirements: Requirements, target_count: int | None = None) -> dict[str, int]:
+    """Return stable, non-overlapping category quotas for generation."""
+    target = target_count or requirements.target_count
+    target = max(requirements.minimum_mods or 0, target)
+    if requirements.maximum_mods is not None:
+        target = min(target, requirements.maximum_mods)
+    categories: list[tuple[str, float]] = []
+    feature_text = " ".join((*requirements.themes, *requirements.required_features)).casefold()
+    if requirements.themes:
+        categories.append((requirements.themes[0], 0.15))
+    if any(term in feature_text for term in ("qol", "inventory", "utility", "storage")):
+        categories.append(("qol", 0.20))
+    if any(term in feature_text for term in ("performance", "fps", "optimization")):
+        categories.append(("performance", 0.10))
+    if any(term in feature_text for term in ("worldgen", "exploration", "adventure", "structures")):
+        categories.append(("world", 0.15))
+    if any(term in feature_text for term in ("boss", "combat", "mobs")):
+        categories.append(("combat", 0.15))
+    if not categories:
+        categories.append(("requested", 0.50))
+    quotas = {name: max(1, int(target * share)) for name, share in categories}
+    assigned = sum(quotas.values())
+    quotas["remaining"] = max(0, target - assigned)
+    return quotas
 
 
 THEME_RULES: dict[str, dict[str, tuple[str, ...]]] = {
@@ -54,7 +80,6 @@ def parse_requirements(prompt: str, *, theme: str | None = None, minimum_mods: i
     parsed_downloads = _number(text, (r"minimum\s+downloads?", r"min(?:imum)?\s+downloads?", r"downloads?\s*[:=]"))
     effective_min = minimum_mods if minimum_mods is not None else parsed_min
     effective_max = maximum_mods if maximum_mods is not None else parsed_max
-    # Zero means "no project override", allowing a prompt-level threshold.
     effective_downloads = minimum_downloads if minimum_downloads else (parsed_downloads or 0)
     warnings = ("minimum_mods exceeds maximum_mods",) if effective_min and effective_max and effective_min > effective_max else ()
     return Requirements(themes=tuple(dict.fromkeys(detected_themes)), required_features=tuple(dict.fromkeys(required)), forbidden_features=tuple(dict.fromkeys(forbidden)), minimum_mods=effective_min, maximum_mods=effective_max, minimum_downloads=max(0, effective_downloads), multiplayer=bool(re.search(r"multiplayer|server|samen spelen", text)), warnings=warnings)
