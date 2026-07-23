@@ -68,10 +68,16 @@ class ModrinthClient:
         # Modrinth expects `facets` as a SINGLE query parameter whose value is a
         # JSON-encoded array of arrays. Passing a Python list makes httpx emit
         # repeated `facets=` params, which Modrinth rejects with HTTP 400.
+        #
+        # NOTE: Modrinth's search index lumps mod loaders in with categories
+        # (see the `facets` docs for GET /search). There is no `loaders` facet
+        # in v2 search, so filtering by `loaders:<loader>` matches zero
+        # documents and returns an empty result set. The loader must be applied
+        # through the `categories` facet instead.
         facet_groups: list[list[str]] = [
             ["project_type:mod"],
             [f"versions:{mc_version}"],
-            [f"loaders:{loader.value}"],
+            [f"categories:{loader.value}"],
         ]
         if category:
             facet_groups.append([f"categories:{category}"])
