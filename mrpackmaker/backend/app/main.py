@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MrPackMaker",
     description="AI Minecraft Modpack Generator",
-    version="1.6.2",
+    version="1.6.3",
     lifespan=lifespan,
 )
 
@@ -55,9 +55,6 @@ app.add_middleware(
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    # Never return the raw exception text to the client: it can leak file
-    # paths, connection strings or secrets embedded in error messages. Log the
-    # full detail server-side and hand the client a generic, safe message.
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
@@ -65,10 +62,6 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Router registration happens at import time. A failure here must not be
-# swallowed: an app that boots with silently missing routes returns confusing
-# 404s for real endpoints. Let the error propagate so a broken build is caught
-# immediately at startup instead of in production.
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
 app.include_router(mods.router, prefix="/api/mods", tags=["mods"])
@@ -77,9 +70,6 @@ app.include_router(compatibility.router, prefix="/api/compatibility", tags=["com
 app.include_router(modpack.router, prefix="/api/modpack", tags=["modpack"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 
-# Serve the SPA in production only after every API route has been registered.
-# Static assets use their normal paths and unknown client-side routes fall back
-# to index.html, making a page refresh on /settings or /project/12 work.
 _frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if _frontend_dist.exists():
     app.mount("/assets", StaticFiles(directory=str(_frontend_dist / "assets")), name="frontend-assets")
@@ -87,13 +77,8 @@ if _frontend_dist.exists():
     @app.get("/", include_in_schema=False)
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_frontend(full_path: str = ""):
-        # An unknown /api/* path must not fall back to the SPA HTML: an API
-        # client expects JSON, and returning index.html with 200 masks 404s.
         if full_path == "api" or full_path.startswith("api/"):
-            return JSONResponse(
-                status_code=404,
-                content={"detail": "Not found", "code": "not_found"},
-            )
+            return JSONResponse(status_code=404, content={"detail": "Not found", "code": "not_found"})
         requested = (_frontend_dist / full_path).resolve()
         if _frontend_dist.resolve() in requested.parents and requested.is_file():
             return FileResponse(requested)
