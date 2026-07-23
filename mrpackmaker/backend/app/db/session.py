@@ -37,37 +37,32 @@ async def init_db() -> None:
     config.data_dir.mkdir(parents=True, exist_ok=True)
     config.output_dir.mkdir(parents=True, exist_ok=True)
     from app import models  # noqa: F401
-
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_apply_compatible_migrations)
 
 
 async def reset_orphaned_generations() -> None:
-    """Recover jobs left behind by a crash or process restart."""
     from app.models.enums import ProjectStatus
     from app.models.generation import GenerationRun
     from app.models.project import Project
-
     async with AsyncSessionLocal() as session:
-        project_result = await session.execute(
-            update(Project).where(Project.status == ProjectStatus.GENERATING.value).values(status=ProjectStatus.DRAFT.value)
-        )
-        await session.execute(
-            update(GenerationRun).where(GenerationRun.status == "running").values(status="failed", error="Interrupted by a server restart")
-        )
+        project_result = await session.execute(update(Project).where(Project.status == ProjectStatus.GENERATING.value).values(status=ProjectStatus.DRAFT.value))
+        await session.execute(update(GenerationRun).where(GenerationRun.status == "running").values(status="failed", error="Interrupted by a server restart"))
         await session.commit()
         if project_result.rowcount:
             logger.warning("Reset %s orphaned generating project(s) to draft", project_result.rowcount)
 
 
 def _apply_compatible_migrations(connection) -> None:
-    """Apply only additive migrations, preserving every existing project."""
     columns = {column["name"] for column in inspect(connection).get_columns("projects")}
     additions = {
         "difficulty": "VARCHAR(32) NOT NULL DEFAULT 'normal'",
         "performance_preference": "VARCHAR(32) NOT NULL DEFAULT 'balanced'",
         "loader_version": "VARCHAR(64) NULL",
+        "minimum_mods": "INTEGER NULL",
+        "maximum_mods": "INTEGER NULL",
+        "minimum_downloads": "INTEGER NOT NULL DEFAULT 0",
     }
     for column, definition in additions.items():
         if column not in columns:
