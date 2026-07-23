@@ -1,36 +1,30 @@
 # Changelog
 
+## 1.7.3.2
+
+Personalization and generation-quality hardening on top of 1.7.3.
+
+### Improved
+
+- Added category-diverse candidate selection so large packs cover multiple
+  requested content areas before filling by score.
+- Connected persisted project minimum/maximum mod counts and download limits to
+  the real orchestrator, not just the API schema.
+- Fixed the generation minimum-count branch so it cannot silently use a falsey
+  conditional expression or fall back to a smaller pack.
+- Added explicit failure messages when the requested minimum cannot be met after
+  theme filtering, compatibility checks and dependency resolution.
+- Preserved prompt-level download thresholds when the project setting is zero.
+- Added regression tests for diversity and threshold precedence.
+- Bumped backend and frontend to 1.7.3.2.
+
+### Quality contract
+
+The generator now either produces a requirement-matched result or reports why
+it cannot. It no longer quietly returns a popularity-ranked partial pack when a
+user has set a hard minimum.
+
 ## 1.7.3
 
-Requirement-driven generation update.
-
-### Added
-
-- Deterministic requirement parser for minimum/maximum mod counts, minimum
-  downloads, multiplayer intent, requested content and forbidden features.
-- Hard theme policy: horror generation excludes Cobblemon/Pokémon, technology,
-  magic and farming unless explicitly requested.
-- Intent-weighted scoring: user match 40%, compatibility 20%, quality 15%,
-  downloads 10%, performance 10%, novelty 5%.
-- Seeded ranking API for reproducible but varied generations.
-- Manual/latest-stable loader resolver with clear incompatibility errors.
-- Regression coverage for horror filtering, 150-mod requirements, scoring,
-  loader pinning and invalid manual versions.
-
-### Correctness
-
-- Theme exclusions are evaluated before ranking, so unrelated popular projects
-  cannot enter a hard horror pool merely because they are highly downloaded.
-- Minimum mod requirements are represented as structured data instead of being
-  left as unparsed prose.
-- Loader resolution distinguishes manual selection from latest-stable fallback.
-
-### Quality note
-
-The parser, scoring and loader resolver are isolated deterministic services so
-catalog clients and AI provider behavior stay decoupled. CI remains the source
-of truth for the complete suite and frontend build.
-
-## 1.7.2.5
-
-Restored the recursive dependency prompt contract.
+Requirement parser, hard theme policy, intent-weighted scoring, seeded ranking,
+manual loader resolution and persisted requirement settings.

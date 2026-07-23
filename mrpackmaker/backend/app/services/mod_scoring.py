@@ -38,12 +38,9 @@ def score_mod(mod: ModEntry, requirements: Requirements, *, rng: random.Random |
     novelty = 1.0 - downloads
     diversity_jitter = rng.random() * 0.03
     score = 0.40 * match_score + 0.20 * compatibility + 0.15 * quality + 0.10 * downloads + 0.10 * performance + 0.05 * novelty + diversity_jitter
-    if match:
-        reasons.append(f"matches {match} requested feature(s)")
-    if compatibility:
-        reasons.append("has a compatible downloadable file")
-    if novelty > 0.5:
-        reasons.append("adds catalog diversity")
+    if match: reasons.append(f"matches {match} requested feature(s)")
+    if compatibility: reasons.append("has a compatible downloadable file")
+    if novelty > 0.5: reasons.append("adds catalog diversity")
     return ScoredMod(mod, score, tuple(reasons))
 
 
@@ -51,3 +48,36 @@ def rank_mods(mods: list[ModEntry], requirements: Requirements, *, seed: int) ->
     rng = random.Random(seed)
     ranked = [score_mod(mod, requirements, rng=rng) for mod in mods]
     return sorted(ranked, key=lambda item: item.score, reverse=True)
+
+
+def select_diverse(ranked: list[ScoredMod], count: int) -> list[ScoredMod]:
+    """Select high-scoring candidates while avoiding a single-category pack.
+
+    The first pass covers each available category, then fills remaining slots by
+    score. This keeps horror packs from becoming 150 copies of one utility type
+    without sacrificing the user's ranking or compatibility constraints.
+    """
+    if count <= 0:
+        return []
+    selected: list[ScoredMod] = []
+    used: set[str] = set()
+    categories: set[str] = set()
+    for item in ranked:
+        key = item.mod.source + ":" + item.mod.id
+        if key in used:
+            continue
+        item_categories = {category.casefold() for category in item.mod.categories}
+        if item_categories - categories:
+            selected.append(item)
+            used.add(key)
+            categories.update(item_categories)
+        if len(selected) >= count:
+            return selected
+    for item in ranked:
+        key = item.mod.source + ":" + item.mod.id
+        if key not in used:
+            selected.append(item)
+            used.add(key)
+        if len(selected) >= count:
+            break
+    return selected

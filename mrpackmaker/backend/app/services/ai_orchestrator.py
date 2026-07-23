@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import random
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 
@@ -14,14 +13,14 @@ from app.db.session import AsyncSessionLocal
 from app.models.enums import LoaderType, ProjectStatus, ThemeType
 from app.models.generation import GenerationRun
 from app.models.project import Project
-from app.schemas.ai import AIProgressEvent, CategoryPlan, FinalModList, GameplayAnalysis, ModRanking
+from app.schemas.ai import AIProgressEvent, CategoryPlan, GameplayAnalysis
 from app.schemas.mod import ModEntry
 from app.services.ai_provider import AIProviderError, create_ai_provider
 from app.services.curseforge import CurseForgeClient
 from app.services.mod_resolver import ModResolver, mod_identity
-from app.services.mod_scoring import rank_mods
+from app.services.mod_scoring import rank_mods, select_diverse
 from app.services.prompt_pipeline import optimize_prompt
-from app.services.requirements import parse_requirements, theme_matches
+from app.services.requirements import Requirements, parse_requirements, theme_matches
 from app.services.modrinth import ModrinthClient
 from app.services.source_registry import ModSourceRegistry, UnknownModSourceError
 
@@ -59,21 +58,21 @@ class AIOrchestrator:
             history.append(event.model_dump(mode="json"))
             run.event_log_json = json.dumps(history)
 
-    async def _gather_candidates(self, registry, resolver, queries, mc_version, loader, requirements, *, seed: int) -> list[ModEntry]:
+    async def _gather_candidates(self, registry, resolver, queries, mc_version, loader, requirements: Requirements | None = None, *, seed: int = 0) -> list[ModEntry]:
+        """Gather compatible candidates; requirements is optional for legacy callers."""
         candidates: dict[str, ModEntry] = {}
-        search_terms = list(dict.fromkeys([*queries[:12], ""]))
+        search_terms = list(dict.fromkeys([*queries[:16], ""]))
         for query in search_terms:
             for source in registry.providers(available_only=True):
-                try:
-                    hits, _ = await source.search(query, mc_version, loader, limit=50)
+                try: hits, _ = await source.search(query, mc_version, loader, limit=50)
                 except Exception as exc:
-                    logger.warning("Search failed on %s for '%s': %s", source.source_id, query, exc)
-                    continue
+                    logger.warning("Search failed on %s for '%s': %s", source.source_id, query, exc); continue
                 for hit in hits:
                     text = " ".join((hit.name, hit.slug, hit.summary, *hit.categories))
-                    if hit.downloads < requirements.minimum_downloads or not theme_matches(text, requirements):
-                        continue
+                    if requirements is not None and (hit.downloads < requirements.minimum_downloads or not theme_matches(text, requirements)): continue
                     candidates.setdefault(mod_identity(hit), hit)
+        if requirements is None:
+            return list(candidates.values())
         return [item.mod for item in rank_mods(list(candidates.values()), requirements, seed=seed) if item.score >= 0]
 
     async def generate(self, project_id: int, *, use_ai: bool = True) -> None:
@@ -90,11 +89,12 @@ class AIOrchestrator:
                 db.add(run); project.status = ProjectStatus.GENERATING.value; await db.flush(); await db.commit()
                 loader, mc_version = LoaderType(project.loader), project.minecraft_version
                 prompt = project.generation_prompt or project.description
-                requirements = parse_requirements(prompt, theme=project.theme)
+                requirements = parse_requirements(prompt, theme=project.theme, minimum_mods=getattr(project, "minimum_mods", None), maximum_mods=getattr(project, "maximum_mods", None), minimum_downloads=getattr(project, "minimum_downloads", None))
+                if requirements.warnings: raise RuntimeError("; ".join(requirements.warnings))
                 seed = project.id ^ int(datetime.now(timezone.utc).timestamp())
                 brief = optimize_prompt(prompt, minecraft_version=mc_version, loader=loader.value, theme=project.theme, difficulty=project.difficulty, performance_preference=project.performance_preference)
-                target_count = max(requirements.minimum_mods or 40, min(requirements.maximum_mods or 250, requirements.target_count))
-                queries = self._fallback_queries(project, prompt) + list(requirements.required_features)
+                target_count = min(requirements.maximum_mods or 300, max(requirements.minimum_mods or 40, requirements.target_count))
+                queries = list(dict.fromkeys(self._fallback_queries(project, prompt) + list(requirements.required_features)))
                 if use_ai and provider is not None:
                     await self._emit(project_id, AIProgressEvent(step=1, message="Analyzing requirements..."), run)
                     try:
@@ -102,21 +102,19 @@ class AIOrchestrator:
                         await self._emit(project_id, AIProgressEvent(step=2, message="Personalizing categories...", data={"themes": requirements.themes, "features": requirements.required_features}), run)
                         plan = await provider.chat_json(system_prompt=brief.system_prompt, user_prompt=f"{brief.as_user_prompt()}\nAnalysis: {analysis.model_dump_json()}", schema=CategoryPlan)
                         if plan.search_queries: queries = list(dict.fromkeys([*plan.search_queries, *queries]))
-                    except AIProviderError as exc:
-                        logger.warning("AI planning failed; using deterministic requirements: %s", exc)
+                    except AIProviderError as exc: logger.warning("AI planning failed; using deterministic requirements: %s", exc)
                 else:
-                    await self._emit(project_id, AIProgressEvent(step=1, message="Analyzing requirements..."), run)
-                    await self._emit(project_id, AIProgressEvent(step=2, message="Personalizing categories...", data={"themes": requirements.themes, "features": requirements.required_features}), run)
+                    await self._emit(project_id, AIProgressEvent(step=1, message="Analyzing requirements..."), run); await self._emit(project_id, AIProgressEvent(step=2, message="Personalizing categories...", data={"themes": requirements.themes, "features": requirements.required_features}), run)
                 await self._emit(project_id, AIProgressEvent(step=3, message="Finding requirement-matched mods..."), run)
                 candidates = await self._gather_candidates(registry, resolver, queries, mc_version, loader, requirements, seed=seed)
-                if len(candidates) < min(target_count, 10): raise RuntimeError(f"Only {len(candidates)} compatible mods matched your requirements; refusing to silently create a smaller pack (target {target_count}).")
+                if requirements.minimum_mods is not None and len(candidates) < requirements.minimum_mods: raise RuntimeError(f"Only {len(candidates)} compatible mods matched your requirements; refusing to create a smaller pack than the requested minimum of {requirements.minimum_mods}.")
+                if not candidates: raise RuntimeError("No compatible mods matched the selected theme and requirements.")
                 await self._emit(project_id, AIProgressEvent(step=4, message="Scoring personalized candidates..."), run)
-                selected = candidates[:target_count]
-                if len(selected) < requirements.minimum_mods if requirements.minimum_mods else False:
-                    raise RuntimeError(f"Could not satisfy minimum mod count {requirements.minimum_mods}; found {len(selected)} compatible matches.")
+                selected = select_diverse(candidates, target_count)
+                if requirements.minimum_mods is not None and len(selected) < requirements.minimum_mods: raise RuntimeError(f"Could not select the requested minimum of {requirements.minimum_mods} compatible mods; found {len(selected)}.")
                 await self._emit(project_id, AIProgressEvent(step=5, message="Resolving dependencies and compatibility..."), run)
                 resolved_mods: list[ModEntry] = []; resolved_keys: set[str] = set(); pending = [resolver.mod_key(item) for item in selected]
-                while pending and len(resolved_mods) < max(250, target_count * 2):
+                while pending and len(resolved_mods) < max(300, target_count * 2):
                     key = pending.pop(0)
                     if key in resolved_keys: continue
                     try: entry = await resolver.resolve_mod_by_key(key, mc_version, loader)
@@ -130,16 +128,13 @@ class AIOrchestrator:
                             dep_key = f"{dependency.source or entry.source}:{dependency.project_id}"
                             if dep_key not in resolved_keys: pending.append(dep_key)
                 resolved_mods = resolver.deduplicate(resolved_mods)
-                if requirements.minimum_mods and len(resolved_mods) < requirements.minimum_mods:
-                    raise RuntimeError(f"Dependencies and compatibility reduced the result to {len(resolved_mods)} mods, below your requested minimum of {requirements.minimum_mods}.")
-                if not resolved_mods: raise RuntimeError("No compatible mods matched the selected theme and requirements.")
+                if requirements.minimum_mods is not None and len(resolved_mods) < requirements.minimum_mods: raise RuntimeError(f"Dependencies and compatibility reduced the result to {len(resolved_mods)} mods, below your requested minimum of {requirements.minimum_mods}.")
                 await self._emit(project_id, AIProgressEvent(step=6, message="Running final quality checks and removing duplicates...", data={"mod_count": len(resolved_mods)}), run)
                 loader_version = project.loader_version or await resolver.resolve_loader_version(loader, mc_version)
                 if not loader_version: raise RuntimeError(f"No compatible {loader.value} loader version found for Minecraft {mc_version}.")
                 project.mods_json = json.dumps([mod.model_dump(mode="json") for mod in resolved_mods]); project.resolved_loader_version = loader_version; project.ai_summary = f"Personalized {project.theme} pack: {len(resolved_mods)} requirement-matched mods."; project.status = ProjectStatus.REVIEW.value
                 run.status = "completed"; run.summary = project.ai_summary; run.completed_at = datetime.now(timezone.utc)
-                await self._emit(project_id, AIProgressEvent(step=7, message=f"{mode_label.capitalize()} generation complete: {len(resolved_mods)} personalized mods.", status="complete", data={"mod_count": len(resolved_mods), "target_count": target_count, "seed": seed}), run)
-                await db.commit()
+                await self._emit(project_id, AIProgressEvent(step=7, message=f"{mode_label.capitalize()} generation complete: {len(resolved_mods)} personalized mods.", status="complete", data={"mod_count": len(resolved_mods), "target_count": target_count, "seed": seed}), run); await db.commit()
         except asyncio.CancelledError:
             await self._mark_cancelled(project_id); await self._emit(project_id, AIProgressEvent(step=0, message="Generation cancelled.", status="cancelled")); raise
         except Exception as exc:

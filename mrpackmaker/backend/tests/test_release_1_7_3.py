@@ -23,9 +23,10 @@ def test_horror_policy_excludes_cobblemon_and_technology():
     assert theme_matches("Horror mobs atmosphere", requirements)
 
 
-def test_minimum_150_is_preserved():
-    requirements = parse_requirements("horror modpack met minimaal 150 mods")
+def test_minimum_150_is_preserved_from_prompt_and_project_override():
+    requirements = parse_requirements("horror modpack", minimum_mods=150, minimum_downloads=100_000)
     assert requirements.minimum_mods == 150
+    assert requirements.minimum_downloads == 100_000
     assert requirements.target_count == 150
 
 

@@ -37,7 +37,7 @@ def _number(text: str, markers: tuple[str, ...]) -> int | None:
     return None
 
 
-def parse_requirements(prompt: str, *, theme: str | None = None, minimum_mods: int | None = None, maximum_mods: int | None = None, minimum_downloads: int = 0) -> Requirements:
+def parse_requirements(prompt: str, *, theme: str | None = None, minimum_mods: int | None = None, maximum_mods: int | None = None, minimum_downloads: int | None = None) -> Requirements:
     text = (prompt or "").casefold()
     detected_themes = [name for name in THEME_RULES if re.search(rf"\b{re.escape(name)}\b", text)]
     if theme and theme in THEME_RULES and theme not in detected_themes: detected_themes.insert(0, theme)
@@ -51,15 +51,13 @@ def parse_requirements(prompt: str, *, theme: str | None = None, minimum_mods: i
     if re.search(r"no technology|geen technologie", text): forbidden.append("technology")
     parsed_min = _number(text, (r"at least", r"minimum", r"minimaal", r"minstens"))
     parsed_max = _number(text, (r"at most", r"maximum", r"maximaal"))
+    parsed_downloads = _number(text, (r"minimum\s+downloads?", r"min(?:imum)?\s+downloads?", r"downloads?\s*[:=]"))
     effective_min = minimum_mods if minimum_mods is not None else parsed_min
     effective_max = maximum_mods if maximum_mods is not None else parsed_max
+    # Zero means "no project override", allowing a prompt-level threshold.
+    effective_downloads = minimum_downloads if minimum_downloads else (parsed_downloads or 0)
     warnings = ("minimum_mods exceeds maximum_mods",) if effective_min and effective_max and effective_min > effective_max else ()
-    return Requirements(
-        themes=tuple(dict.fromkeys(detected_themes)), required_features=tuple(dict.fromkeys(required)),
-        forbidden_features=tuple(dict.fromkeys(forbidden)), minimum_mods=effective_min,
-        maximum_mods=effective_max, minimum_downloads=max(0, minimum_downloads),
-        multiplayer=bool(re.search(r"multiplayer|server|samen spelen", text)), warnings=warnings,
-    )
+    return Requirements(themes=tuple(dict.fromkeys(detected_themes)), required_features=tuple(dict.fromkeys(required)), forbidden_features=tuple(dict.fromkeys(forbidden)), minimum_mods=effective_min, maximum_mods=effective_max, minimum_downloads=max(0, effective_downloads), multiplayer=bool(re.search(r"multiplayer|server|samen spelen", text)), warnings=warnings)
 
 
 def theme_matches(mod_text: str, requirements: Requirements) -> bool:
