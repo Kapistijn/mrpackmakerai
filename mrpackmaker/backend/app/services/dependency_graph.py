@@ -1,22 +1,41 @@
-"""Dependency graph analysis for compatibility checks."""
+"""Dependency graph analysis with large-pack safety limits."""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from app.schemas.mod import ModDependency, ModEntry
 REQUIRED_TYPES = {"required"}
+MAX_DEPENDENCY_DEPTH = 20
+MAX_TOTAL_NODES = 5000
 @dataclass
 class GraphNode:
     key: str
     mod: ModEntry
     dependencies: list[str] = field(default_factory=list)
     dependents: list[str] = field(default_factory=list)
+class DependencyGraphLimitError(RuntimeError): pass
+@dataclass(frozen=True)
+class DependencyGraphLimits:
+    max_depth: int = MAX_DEPENDENCY_DEPTH
+    max_nodes: int = MAX_TOTAL_NODES
+class DependencyGraphGuard:
+    def __init__(self, limits: DependencyGraphLimits | None = None) -> None:
+        self.limits = limits or DependencyGraphLimits(); self.nodes: set[str] = set()
+    def visit(self, key: str, depth: int) -> bool:
+        if key in self.nodes: return False
+        if depth > self.limits.max_depth: raise DependencyGraphLimitError(f"Dependency graph exceeded safe depth ({self.limits.max_depth}). Possible circular dependency or broken metadata.")
+        if len(self.nodes) >= self.limits.max_nodes: raise DependencyGraphLimitError(f"Dependency graph exceeded safe node limit ({self.limits.max_nodes}). Possible circular dependency or broken metadata.")
+        self.nodes.add(key); return True
 class DependencyGraph:
-    def __init__(self) -> None: self.nodes: dict[str, GraphNode] = {}
+    """Legacy graph API retained for compatibility and export validation."""
+    def __init__(self, limits: DependencyGraphLimits | None = None) -> None:
+        self.nodes: dict[str, GraphNode] = {}; self.guard = DependencyGraphGuard(limits)
     @staticmethod
     def mod_key(mod: ModEntry) -> str: return f"{mod.source}:{mod.id}"
     @staticmethod
     def dependency_key(dep: ModDependency) -> str | None: return f"{dep.source or 'modrinth'}:{dep.project_id}" if dep.project_id else None
     def add_mod(self, mod: ModEntry) -> None:
-        key=self.mod_key(mod); node=self.nodes.setdefault(key,GraphNode(key,mod))
+        key=self.mod_key(mod)
+        if key not in self.nodes: self.guard.visit(key, 0)
+        node=self.nodes.setdefault(key, GraphNode(key,mod)); node.mod=mod
         for dep in mod.dependencies:
             dep_key=self.dependency_key(dep)
             if dep_key and dep_key != key and dep_key not in node.dependencies: node.dependencies.append(dep_key)
@@ -36,17 +55,16 @@ class DependencyGraph:
         conflicts=set()
         for key,node in self.nodes.items():
             for dep in node.mod.dependencies:
-                if dep.dependency_type.casefold() != 'incompatible': continue
-                dep_key=self.dependency_key(dep)
-                if dep_key and dep_key in self.nodes: conflicts.add(tuple(sorted((key,dep_key))))
+                if dep.dependency_type.casefold() == 'incompatible':
+                    dep_key=self.dependency_key(dep)
+                    if dep_key and dep_key in self.nodes: conflicts.add(tuple(sorted((key,dep_key))))
         return sorted(conflicts)
     def get_cycles(self)->list[list[str]]:
         cycles=set(); visiting=[]; active=set(); visited=set()
         def canonical(path):
             ring=path[:-1]; rotations=[tuple(ring[i:]+ring[:i]) for i in range(len(ring))]; return min(rotations)
         def visit(key):
-            if key in active:
-                cycles.add(canonical(visiting[visiting.index(key):]+[key])); return
+            if key in active: cycles.add(canonical(visiting[visiting.index(key):]+[key])); return
             if key in visited: return
             active.add(key); visiting.append(key)
             for dep in sorted(self.nodes[key].dependencies):
