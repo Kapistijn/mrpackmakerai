@@ -3,11 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
-from app.domain.common import Environment, FrozenMap, ModSource
+from app.domain.common import Environment, FrozenMap, ModSource, to_json_safe
 
 
 @dataclass(frozen=True, eq=False)
 class CanonicalModIdentity:
+    """Equality is identity deduplication by canonical_key, not full object equality."""
     canonical_key: str
     display_name: str
     sources: Mapping[ModSource, str] = field(default_factory=dict)
@@ -21,10 +22,7 @@ class CanonicalModIdentity:
         object.__setattr__(self, "canonical_key", self.canonical_key.strip().lower())
         object.__setattr__(self, "aliases", frozenset(str(x).strip().lower() for x in self.aliases))
         object.__setattr__(self, "authors", frozenset(str(x).strip().lower() for x in self.authors))
-        normalized_sources = {
-            (key.value if isinstance(key, ModSource) else str(key)): str(value)
-            for key, value in self.sources.items()
-        }
+        normalized_sources = {(key.value if isinstance(key, ModSource) else str(key)): str(value) for key, value in self.sources.items()}
         object.__setattr__(self, "sources", FrozenMap.from_mapping(normalized_sources))
 
     def __eq__(self, other: object) -> bool:
@@ -34,21 +32,10 @@ class CanonicalModIdentity:
         return hash(self.canonical_key)
 
     def matches(self, other: "CanonicalModIdentity") -> bool:
-        return (
-            self.canonical_key == other.canonical_key
-            or bool(self.aliases & ({other.canonical_key} | other.aliases))
-            or any(src in other.sources and other.sources[src] == project_id for src, project_id in self.sources.items())
-        )
+        return self.canonical_key == other.canonical_key or bool(self.aliases & ({other.canonical_key} | other.aliases)) or any(src in other.sources and other.sources[src] == project_id for src, project_id in self.sources.items())
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "canonical_key": self.canonical_key,
-            "display_name": self.display_name,
-            "sources": self.sources.to_dict(),
-            "aliases": sorted(self.aliases),
-            "authors": sorted(self.authors),
-            "confidence": self.confidence,
-        }
+        return to_json_safe({"canonical_key": self.canonical_key, "display_name": self.display_name, "sources": self.sources, "aliases": self.aliases, "authors": self.authors, "confidence": self.confidence})
 
 
 @dataclass(frozen=True)
@@ -63,25 +50,19 @@ class ModFile:
     def __post_init__(self) -> None:
         if not self.filename.strip() or not self.url.strip() or not self.sha512.strip() or self.size_bytes < 0:
             raise ValueError("invalid mod file")
-        object.__setattr__(self, "minecraft_versions", frozenset(self.minecraft_versions))
+        object.__setattr__(self, "minecraft_versions", frozenset(str(x) for x in self.minecraft_versions))
         object.__setattr__(self, "loaders", frozenset(str(x).lower() for x in self.loaders))
 
     def supports(self, minecraft_version: str, loader: str) -> bool:
         return minecraft_version in self.minecraft_versions and loader.lower() in self.loaders
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "filename": self.filename,
-            "url": self.url,
-            "sha512": self.sha512,
-            "size_bytes": self.size_bytes,
-            "minecraft_versions": sorted(self.minecraft_versions),
-            "loaders": sorted(self.loaders),
-        }
+        return to_json_safe({"filename": self.filename, "url": self.url, "sha512": self.sha512, "size_bytes": self.size_bytes, "minecraft_versions": self.minecraft_versions, "loaders": self.loaders})
 
 
 @dataclass(frozen=True, eq=False)
 class ModCandidate:
+    """Equality is catalog deduplication by (source, project_id), not full object equality."""
     identity: CanonicalModIdentity
     source: ModSource
     project_id: str
@@ -99,6 +80,13 @@ class ModCandidate:
             raise ValueError("invalid mod candidate")
         if not isinstance(self.source, ModSource):
             object.__setattr__(self, "source", ModSource(str(self.source).lower()))
+        for field_name in ("client_side", "server_side"):
+            value = getattr(self, field_name)
+            if not isinstance(value, Environment):
+                try:
+                    object.__setattr__(self, field_name, Environment(str(value).lower()))
+                except ValueError as exc:
+                    raise ValueError(f"invalid {field_name}: {value!r}") from exc
         object.__setattr__(self, "categories", frozenset(str(x).strip().lower() for x in self.categories))
         object.__setattr__(self, "files", tuple(self.files))
 
@@ -112,16 +100,4 @@ class ModCandidate:
         return next((item for item in self.files if item.supports(minecraft_version, loader)), None)
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "identity": self.identity.to_dict(),
-            "source": self.source.value,
-            "project_id": self.project_id,
-            "slug": self.slug,
-            "name": self.name,
-            "description": self.description,
-            "downloads": self.downloads,
-            "categories": sorted(self.categories),
-            "files": [item.to_dict() for item in self.files],
-            "client_side": self.client_side.value,
-            "server_side": self.server_side.value,
-        }
+        return to_json_safe({"identity": self.identity, "source": self.source, "project_id": self.project_id, "slug": self.slug, "name": self.name, "description": self.description, "downloads": self.downloads, "categories": self.categories, "files": self.files, "client_side": self.client_side, "server_side": self.server_side})

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app.domain.common import CompatibilityStatus, FrozenMap, Loader
+from app.domain.common import CompatibilityStatus, Loader, to_json_safe
 
 
 @dataclass(frozen=True)
@@ -14,6 +14,9 @@ class CompatibilityIssue:
     def __post_init__(self) -> None:
         if not self.code.strip() or not self.message.strip():
             raise ValueError("issue code and message are required")
+
+    def to_dict(self) -> dict[str, object]:
+        return to_json_safe({"code": self.code, "message": self.message, "fatal": self.fatal})
 
 
 @dataclass(frozen=True)
@@ -29,8 +32,8 @@ class MeasuredMetrics:
         if self.min_ram_mb is not None and self.recommended_ram_mb is not None and self.recommended_ram_mb < self.min_ram_mb:
             raise ValueError("recommended RAM cannot be below minimum RAM")
 
-    def to_dict(self) -> dict[str, int | None]:
-        return {"min_ram_mb": self.min_ram_mb, "recommended_ram_mb": self.recommended_ram_mb, "java_version": self.java_version}
+    def to_dict(self) -> dict[str, object]:
+        return to_json_safe({"min_ram_mb": self.min_ram_mb, "recommended_ram_mb": self.recommended_ram_mb, "java_version": self.java_version})
 
 
 @dataclass(frozen=True)
@@ -63,4 +66,4 @@ class CompatibilityReport:
         return CompatibilityReport(self.minecraft_version, self.loader, self.loader_version, (*self.issues, issue), self.metrics, self.evaluated)
 
     def to_dict(self) -> dict[str, object]:
-        return {"minecraft_version": self.minecraft_version, "loader": self.loader.value, "loader_version": self.loader_version, "issues": [{"code": i.code, "message": i.message, "fatal": i.fatal} for i in self.issues], "metrics": self.metrics.to_dict(), "evaluated": self.evaluated, "status": self.status.value}
+        return to_json_safe({"minecraft_version": self.minecraft_version, "loader": self.loader, "loader_version": self.loader_version, "issues": self.issues, "metrics": self.metrics, "evaluated": self.evaluated, "status": self.status})

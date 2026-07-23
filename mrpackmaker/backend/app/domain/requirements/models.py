@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-from app.domain.common import FrozenMap, Loader, PerformanceTarget
+from app.domain.common import FrozenMap, Loader, PerformanceTarget, to_json_safe
 
 
 def _strings(values: object) -> frozenset[str]:
@@ -34,6 +34,11 @@ class RequirementProfile:
             raise ValueError("raw_prompt and minecraft_version are required")
         if not isinstance(self.loader, Loader):
             object.__setattr__(self, "loader", Loader.from_str(str(self.loader)))
+        if not isinstance(self.performance_target, PerformanceTarget):
+            try:
+                object.__setattr__(self, "performance_target", PerformanceTarget(str(self.performance_target).lower()))
+            except ValueError as exc:
+                raise ValueError(f"invalid performance_target: {self.performance_target!r}") from exc
         if self.min_mods < 0 or self.min_downloads < 0:
             raise ValueError("mod counts and downloads cannot be negative")
         if self.max_mods is not None and (self.max_mods < 0 or self.max_mods < self.min_mods):
@@ -52,23 +57,15 @@ class RequirementProfile:
         return replace(self, **changes)
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "raw_prompt": self.raw_prompt,
-            "minecraft_version": self.minecraft_version,
-            "loader": self.loader.value,
-            "theme": self.theme,
-            "subthemes": sorted(self.subthemes),
-            "features": sorted(self.features),
-            "exclusions": sorted(self.exclusions),
-            "min_mods": self.min_mods,
-            "max_mods": self.max_mods,
-            "min_downloads": self.min_downloads,
-            "multiplayer": self.multiplayer,
-            "server": self.server,
-            "performance_target": self.performance_target.value,
-            "loader_version": self.loader_version,
+        return to_json_safe({
+            "raw_prompt": self.raw_prompt, "minecraft_version": self.minecraft_version,
+            "loader": self.loader, "theme": self.theme, "subthemes": self.subthemes,
+            "features": self.features, "exclusions": self.exclusions, "min_mods": self.min_mods,
+            "max_mods": self.max_mods, "min_downloads": self.min_downloads,
+            "multiplayer": self.multiplayer, "server": self.server,
+            "performance_target": self.performance_target, "loader_version": self.loader_version,
             "language": self.language,
-        }
+        })
 
 
 @dataclass(frozen=True)
@@ -96,4 +93,4 @@ class GenerationBrief:
         return replace(self, seed=seed)
 
     def to_dict(self) -> dict[str, object]:
-        return {"profile": self.profile.to_dict(), "enriched_intent": self.enriched_intent, "category_quotas": self.category_quotas.to_dict(), "seed": self.seed}
+        return to_json_safe({"profile": self.profile, "enriched_intent": self.enriched_intent, "category_quotas": self.category_quotas, "seed": self.seed})

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, Sequence, runtime_checkable
 
-from app.domain.common import DependencyType, FrozenMap, Loader
+from app.domain.common import Loader, to_json_safe
 from app.domain.mods.models import ModCandidate
 from app.domain.requirements.models import GenerationBrief, RequirementProfile
 
@@ -18,6 +18,9 @@ class SelectionResult:
         if not 0 <= self.score <= 1 or not self.reason.strip():
             raise ValueError("invalid selection result")
 
+    def to_dict(self) -> dict[str, object]:
+        return to_json_safe({"candidate": self.candidate, "score": self.score, "reason": self.reason})
+
 
 @dataclass(frozen=True)
 class DependencyResolutionResult:
@@ -30,10 +33,10 @@ class DependencyResolutionResult:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "resolved", tuple(self.resolved))
-        object.__setattr__(self, "missing", tuple(self.missing))
-        object.__setattr__(self, "conflicts", tuple(self.conflicts))
-        object.__setattr__(self, "cycles", tuple(tuple(cycle) for cycle in self.cycles))
-        object.__setattr__(self, "version_conflicts", tuple(self.version_conflicts))
+        object.__setattr__(self, "missing", tuple(str(item) for item in self.missing))
+        object.__setattr__(self, "conflicts", tuple(str(item) for item in self.conflicts))
+        object.__setattr__(self, "cycles", tuple(tuple(str(item) for item in cycle) for cycle in self.cycles))
+        object.__setattr__(self, "version_conflicts", tuple(str(item) for item in self.version_conflicts))
         has_errors = bool(self.missing or self.conflicts or self.cycles or self.version_conflicts)
         if self.success == has_errors:
             raise ValueError("success must be true exactly when no resolution errors exist")
@@ -41,6 +44,9 @@ class DependencyResolutionResult:
     @property
     def is_complete(self) -> bool:
         return self.success and not self.missing and not self.conflicts and not self.cycles and not self.version_conflicts
+
+    def to_dict(self) -> dict[str, object]:
+        return to_json_safe({"resolved": self.resolved, "missing": self.missing, "conflicts": self.conflicts, "cycles": self.cycles, "version_conflicts": self.version_conflicts, "success": self.success})
 
 
 @runtime_checkable

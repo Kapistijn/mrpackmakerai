@@ -1,24 +1,56 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass
 from enum import Enum
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 T = TypeVar("T")
 
 
+def freeze(value: T) -> T:
+    """Recursively copy mutable containers into immutable equivalents."""
+    if isinstance(value, FrozenMap):
+        return value  # type: ignore[return-value]
+    if isinstance(value, Mapping):
+        return FrozenMap.from_mapping(value)  # type: ignore[return-value]
+    if isinstance(value, list):
+        return tuple(freeze(item) for item in value)  # type: ignore[return-value]
+    if isinstance(value, tuple):
+        return tuple(freeze(item) for item in value)  # type: ignore[return-value]
+    if isinstance(value, (set, frozenset)):
+        return frozenset(freeze(item) for item in value)  # type: ignore[return-value]
+    return value
+
+
+def to_json_safe(value: Any) -> Any:
+    """Convert domain values recursively to JSON-compatible primitives."""
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, FrozenMap):
+        return {str(key): to_json_safe(item) for key, item in value.items()}
+    if isinstance(value, Mapping):
+        return {str(key): to_json_safe(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list, frozenset, set)):
+        return [to_json_safe(item) for item in value]
+    if hasattr(value, "to_dict"):
+        return to_json_safe(value.to_dict())
+    if is_dataclass(value):
+        return to_json_safe({key: getattr(value, key) for key in value.__dataclass_fields__})
+    return value
+
+
 @dataclass(frozen=True)
 class FrozenMap(Mapping[str, T], Generic[T]):
-    """Hashable, immutable mapping backed by a sorted tuple of pairs."""
+    """Deeply immutable and hashable mapping backed by sorted tuple pairs."""
 
     _items: tuple[tuple[str, T], ...] = ()
 
     @classmethod
-    def from_mapping(cls, values: Mapping[str, T] | None) -> "FrozenMap[T]":
+    def from_mapping(cls, values: Mapping[object, T] | None) -> "FrozenMap[T]":
         if values is None:
             return cls()
-        items = tuple(sorted(((str(k), v) for k, v in values.items()), key=lambda p: p[0]))
+        items = tuple(sorted(((str(key), freeze(value)) for key, value in values.items()), key=lambda pair: pair[0]))
         if len({key for key, _ in items}) != len(items):
             raise ValueError("duplicate mapping key")
         return cls(items)
@@ -39,7 +71,7 @@ class FrozenMap(Mapping[str, T], Generic[T]):
         return hash(self._items)
 
     def to_dict(self) -> dict[str, T]:
-        return dict(self._items)
+        return {key: value for key, value in self._items}
 
 
 class Loader(str, Enum):
