@@ -39,14 +39,15 @@ class AIOrchestrator:
  async def _gather_candidates(self,registry,queries,mc,loader,requirements,plan):
   candidates={};search_queries=queries if plan.include_queries else queries[:4]
   for query in list(dict.fromkeys([*search_queries,''])):
-   for source in registry.providers(available_only=True):
-    try:hits,_=await source.search(query,mc,loader,limit=plan.limit)
-    except Exception as exc:logger.warning('Search failed on %s for %r: %s',source.source_id,query,exc);continue
-    for hit in hits:
-     text=' '.join((hit.name,hit.slug,hit.summary,*hit.categories))
-     if hit.downloads<requirements.minimum_downloads or not theme_matches(text,requirements):continue
-     if any(mod_matches_constraint(hit,item) for item in requirements.constraint.forbidden_mods):continue
-     candidates.setdefault(mod_identity(hit),hit)
+   for offset in plan.offsets:
+    for source in registry.providers(available_only=True):
+     try:hits,_=await source.search(query,mc,loader,limit=plan.limit,offset=offset)
+     except Exception as exc:logger.warning('Search failed on %s for %r at offset %s: %s',source.source_id,query,offset,exc);continue
+     for hit in hits:
+      text=' '.join((hit.name,hit.slug,hit.summary,*hit.categories))
+      if hit.downloads<requirements.minimum_downloads or not theme_matches(text,requirements):continue
+      if any(mod_matches_constraint(hit,item) for item in requirements.constraint.forbidden_mods):continue
+      candidates.setdefault(mod_identity(hit),hit)
   return list(candidates.values())
  async def generate(self,project_id:int,*,use_ai=True)->None:
   queue=self._events[project_id];provider=create_ai_provider() if use_ai else None;registry=ModSourceRegistry([ModrinthClient(config.apis.modrinth_key),CurseForgeClient(config.apis.curseforge_key)]);resolver=ModResolver(registry=registry)
