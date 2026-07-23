@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import config
 from app.db.session import get_db
-from app.models.enums import LoaderType, ProjectStatus
+from app.models.enums import LoaderType, ProjectStatus, ShaderSupport
 from app.models.project import Project
 from app.schemas.project import ProjectCreate, ProjectListItem, ProjectResponse, ProjectUpdate
 from app.services.loader_metadata import LoaderMetadataError, OfficialLoaderResolver
@@ -30,6 +30,13 @@ def _project_to_response(project: Project) -> ProjectResponse:
         performance_preference=project.performance_preference,
         generation_prompt=project.generation_prompt, minimum_mods=project.minimum_mods,
         maximum_mods=project.maximum_mods, minimum_downloads=project.minimum_downloads,
+        target_ram_gb=project.target_ram_gb, target_fps=project.target_fps,
+        shader_support=ShaderSupport(project.shader_support), shader_quality=project.shader_quality,
+        resourcepack_support=project.resourcepack_support,
+        required_mods=json.loads(project.required_mods_json or "[]"),
+        forbidden_mods=json.loads(project.forbidden_mods_json or "[]"),
+        ai_creativity=project.ai_creativity, ai_strictness=project.ai_strictness,
+        discovery_depth=project.discovery_depth,
         status=project.status_enum(), mods=mods,
         resolved_loader_version=project.resolved_loader_version,
         ai_summary=project.ai_summary, mrpack_path=project.mrpack_path,
@@ -60,7 +67,20 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
 
 @router.post("", response_model=ProjectResponse, status_code=201)
 async def create_project(body: ProjectCreate, db: AsyncSession = Depends(get_db)):
-    project = Project(name=body.name, description=body.description, minecraft_version=body.minecraft_version, loader=body.loader.value, loader_version=body.loader_version, theme=body.theme.value, theme_custom=body.theme_custom, difficulty=body.difficulty.value, performance_preference=body.performance_preference.value, generation_prompt=body.generation_prompt or body.description, minimum_mods=body.minimum_mods, maximum_mods=body.maximum_mods, minimum_downloads=body.minimum_downloads, status=ProjectStatus.DRAFT.value, mods_json="[]", settings_locked=True)
+    project = Project(
+        name=body.name, description=body.description, minecraft_version=body.minecraft_version,
+        loader=body.loader.value, loader_version=body.loader_version, theme=body.theme.value,
+        theme_custom=body.theme_custom, difficulty=body.difficulty.value,
+        performance_preference=body.performance_preference.value,
+        generation_prompt=body.generation_prompt or body.description,
+        minimum_mods=body.minimum_mods, maximum_mods=body.maximum_mods, minimum_downloads=body.minimum_downloads,
+        target_ram_gb=body.target_ram_gb, target_fps=body.target_fps,
+        shader_support=body.shader_support.value, shader_quality=body.shader_quality,
+        resourcepack_support=body.resourcepack_support,
+        required_mods_json=json.dumps(body.required_mods), forbidden_mods_json=json.dumps(body.forbidden_mods),
+        ai_creativity=body.ai_creativity, ai_strictness=body.ai_strictness, discovery_depth=body.discovery_depth,
+        status=ProjectStatus.DRAFT.value, mods_json="[]", settings_locked=True,
+    )
     db.add(project)
     await db.flush(); await db.refresh(project)
     return _project_to_response(project)
@@ -82,6 +102,16 @@ async def update_project(project_id: int, body: ProjectUpdate, db: AsyncSession 
     if body.minimum_mods is not None: project.minimum_mods = body.minimum_mods; project.mrpack_path = None
     if body.maximum_mods is not None: project.maximum_mods = body.maximum_mods; project.mrpack_path = None
     if body.minimum_downloads is not None: project.minimum_downloads = body.minimum_downloads; project.mrpack_path = None
+    if body.target_ram_gb is not None: project.target_ram_gb = body.target_ram_gb; project.mrpack_path = None
+    if body.target_fps is not None: project.target_fps = body.target_fps; project.mrpack_path = None
+    if body.shader_support is not None: project.shader_support = body.shader_support.value; project.mrpack_path = None
+    if body.shader_quality is not None: project.shader_quality = body.shader_quality.strip() or None; project.mrpack_path = None
+    if body.resourcepack_support is not None: project.resourcepack_support = body.resourcepack_support; project.mrpack_path = None
+    if body.required_mods is not None: project.required_mods_json = json.dumps(body.required_mods); project.mrpack_path = None
+    if body.forbidden_mods is not None: project.forbidden_mods_json = json.dumps(body.forbidden_mods); project.mrpack_path = None
+    if body.ai_creativity is not None: project.ai_creativity = body.ai_creativity
+    if body.ai_strictness is not None: project.ai_strictness = body.ai_strictness
+    if body.discovery_depth is not None: project.discovery_depth = body.discovery_depth
     if project.minimum_mods and project.maximum_mods and project.minimum_mods > project.maximum_mods:
         raise HTTPException(status_code=422, detail="minimum_mods cannot exceed maximum_mods")
     if body.mods is not None: project.mods_json = json.dumps([mod.model_dump(mode="json") for mod in body.mods]); project.mrpack_path = None; project.status = ProjectStatus.REVIEW.value
