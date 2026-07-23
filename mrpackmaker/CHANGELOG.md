@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.6.3
+
+Reliability and correctness release for the generation pipeline.
+
+### Fixed
+
+- Updated the stale Modrinth facet regression test to assert the documented
+  `categories:<loader>` filter instead of the invalid `loaders:<loader>` filter.
+- Added cross-catalog project identity normalization using slug/name signals.
+  Equivalent Modrinth and CurseForge results are collapsed before export, with
+  the entry that has a compatible downloadable file, hashes, and stronger
+  metadata preferred.
+- Kept dependency and loader-library injection behind the same deduplication
+  gate, preventing duplicate library entries from appearing in the final pack.
+- Preserved the 1.6.2 fixes for empty Modrinth results, AI provider payloads,
+  wrong-version CurseForge files, stuck generation state, startup route errors,
+  and unbounded cache growth.
+
+### Tests and quality
+
+- Added cross-catalog identity, richer-entry selection, and distinct-project
+  regression tests.
+- Retained the complete backend test suite and frontend type-check/build CI.
+- Bumped backend and frontend version metadata to 1.6.3.
+
 ## 1.6.2
 
 A correctness and robustness release focused on the generation pipeline.
@@ -12,7 +37,7 @@ A correctness and robustness release focused on the generation pipeline.
   facet matched zero documents, so every search came back empty even for
   popular combos like 1.20.1 / Forge. Now filtered via `categories:<loader>`.
 - **AI connection test and generation returned HTTP 500** (`TypeError: 'NoneType'
-  object is not iterable`) whenever an OpenAI-compatible endpoint replied with a
+  object is not iterable) whenever an OpenAI-compatible endpoint replied with a
   body that had no `data` array (e.g. a base URL missing the `/v1` suffix).
   `list_models` now treats a missing payload as "no models" and the endpoint
   reports "not reachable" cleanly.
@@ -42,4 +67,4 @@ A correctness and robustness release focused on the generation pipeline.
 
 - Added dependency-light regression tests for the CurseForge file picker and
   the cache bounds.
-- Bumped backend and frontend versions to 1.6.2.
+- Bumped backend and frontend version metadata to 1.6.2.
