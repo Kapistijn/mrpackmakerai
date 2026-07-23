@@ -50,37 +50,40 @@ def rank_mods(mods: list[ModEntry], requirements: Requirements, *, seed: int) ->
     return sorted(ranked, key=lambda item: item.score, reverse=True)
 
 
-def select_diverse(candidates: list[ModEntry], count: int) -> list[ModEntry]:
-    """Select high-ranked candidates while avoiding a single-category pack.
-
-    Operates on the already-ranked ``ModEntry`` list produced by the
-    orchestrator (``rank_mods`` output unwrapped to its ``.mod`` entries). The
-    first pass covers each available category, then remaining slots are filled
-    in ranked order. This keeps horror packs from becoming 150 copies of one
-    utility type without sacrificing the user's ranking or compatibility
-    constraints.
-    """
+def _select_diverse_items(items: list[ScoredMod] | list[ModEntry], count: int) -> list[ScoredMod] | list[ModEntry]:
     if count <= 0:
         return []
-    selected: list[ModEntry] = []
+    selected = []
     used: set[str] = set()
     categories: set[str] = set()
-    for item in candidates:
-        key = item.source + ":" + item.id
+    for item in items:
+        mod = item.mod if isinstance(item, ScoredMod) else item
+        key = f"{mod.source}:{mod.id}"
         if key in used:
             continue
-        item_categories = {category.casefold() for category in item.categories}
+        item_categories = {category.casefold() for category in mod.categories}
         if item_categories - categories:
             selected.append(item)
             used.add(key)
             categories.update(item_categories)
         if len(selected) >= count:
             return selected
-    for item in candidates:
-        key = item.source + ":" + item.id
+    for item in items:
+        mod = item.mod if isinstance(item, ScoredMod) else item
+        key = f"{mod.source}:{mod.id}"
         if key not in used:
             selected.append(item)
             used.add(key)
         if len(selected) >= count:
             break
     return selected
+
+
+def select_diverse(ranked: list[ScoredMod], count: int) -> list[ScoredMod]:
+    """Select ranked scored mods while covering distinct categories first."""
+    return _select_diverse_items(ranked, count)  # type: ignore[return-value]
+
+
+def select_diverse_candidates(candidates: list[ModEntry], count: int) -> list[ModEntry]:
+    """Select already-ranked ModEntry candidates from the live generation path."""
+    return _select_diverse_items(candidates, count)  # type: ignore[return-value]
