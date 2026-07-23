@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app.domain.common import CompatibilityStatus, FrozenMap, Loader, ModSource
+from app.domain.common import CompatibilityStatus, Environment, FrozenMap, Loader, ModSource
 from app.domain.compatibility.models import CompatibilityIssue, CompatibilityReport, MeasuredMetrics
 from app.domain.mods.models import CanonicalModIdentity, ModCandidate, ModFile
 from app.domain.providers.protocols import DependencyResolutionResult, DependencyResolver, ModCatalogProvider, SelectionResult
