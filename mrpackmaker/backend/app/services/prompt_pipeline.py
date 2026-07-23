@@ -106,7 +106,12 @@ def optimize_prompt(prompt: str, *, minecraft_version: str, loader: str, theme: 
     if intent.maximum_mods is not None: constraints.append(f"never exceed {intent.maximum_mods} total mods")
     if intent.forbidden_features: constraints.append(f"avoid: {', '.join(intent.forbidden_features)}")
     if intent.multiplayer: constraints.append("prefer multiplayer and server-compatible content")
-    constraints.extend(CONTENT_INTENT_CONSTRAINTS[item] for item in intent.gameplay_styles if item in CONTENT_INTENT_CONSTRAINTS)
+    # Derive from both the parsed profile and the raw prompt. The second path
+    # makes the contract robust to a future parser that normalizes or filters a
+    # term while the user's explicit content requirement is still present.
+    raw_content_signals = {term for term in CONTENT_INTENT_CONSTRAINTS if _contains(original.casefold(), term)}
+    content_signals = set(intent.gameplay_styles) | raw_content_signals
+    constraints.extend(CONTENT_INTENT_CONSTRAINTS[item] for item in CONTENT_INTENT_CONSTRAINTS if item in content_signals)
     constraints.extend(f"intent: {item}" for item in intent.themes + intent.gameplay_styles)
     constraints.extend(f"resolve ambiguity: {error}" for error in errors)
     priorities = tuple(dict.fromkeys((performance_preference, "compatibility", "stability", "user intent")))
