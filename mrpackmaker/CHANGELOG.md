@@ -2,34 +2,38 @@
 
 ## 1.7.3
 
-Requirement-driven generation update.
+Requirement-driven, personalized generation update.
 
 ### Added
 
-- Deterministic requirement parser for minimum/maximum mod counts, minimum
-  downloads, multiplayer intent, requested content and forbidden features.
-- Hard theme policy: horror generation excludes Cobblemon/Pokémon, technology,
-  magic and farming unless explicitly requested.
-- Intent-weighted scoring: user match 40%, compatibility 20%, quality 15%,
-  downloads 10%, performance 10%, novelty 5%.
-- Seeded ranking API for reproducible but varied generations.
-- Manual/latest-stable loader resolver with clear incompatibility errors.
-- Regression coverage for horror filtering, 150-mod requirements, scoring,
-  loader pinning and invalid manual versions.
+- Persisted minimum/maximum mod counts and minimum download threshold in the
+  project API and SQLite migration.
+- Requirement parser now merges saved project limits with prompt intent, so a
+  configured minimum such as 150 cannot be silently replaced by the default 40.
+- Integrated requirement filtering and intent-weighted ranking into the real
+  generation orchestrator, with hard theme exclusions before selection.
+- Seeded candidate ranking and cross-source identity deduplication reduce
+  popularity bias while producing varied, reproducible results.
+- Manual/latest-stable loader resolution remains part of the generation path,
+  with explicit failure when no compatible loader exists.
+- Added regression coverage for persisted requirement overrides, horror policy,
+  minimum 150 mods, scoring, duplicate filtering and loader selection.
 
-### Correctness
+### Selection policy
 
-- Theme exclusions are evaluated before ranking, so unrelated popular projects
-  cannot enter a hard horror pool merely because they are highly downloaded.
-- Minimum mod requirements are represented as structured data instead of being
-  left as unparsed prose.
-- Loader resolution distinguishes manual selection from latest-stable fallback.
+- User/theme match: 40%
+- Compatibility: 20%
+- Quality: 15%
+- Downloads: 10%
+- Performance: 10%
+- Novelty: 5%
 
-### Quality note
+### Safety
 
-The parser, scoring and loader resolver are isolated deterministic services so
-catalog clients and AI provider behavior stay decoupled. CI remains the source
-of truth for the complete suite and frontend build.
+- Horror excludes Cobblemon/Pokémon, technology, magic and farming unless the
+  user explicitly asks for them.
+- Generation refuses to silently return a smaller pack when the requested
+  minimum cannot be met after compatibility and dependency resolution.
 
 ## 1.7.2.5
 
