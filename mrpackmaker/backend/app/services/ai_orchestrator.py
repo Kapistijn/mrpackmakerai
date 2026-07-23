@@ -13,14 +13,14 @@ from app.db.session import AsyncSessionLocal
 from app.models.enums import LoaderType, ProjectStatus, ThemeType
 from app.models.generation import GenerationRun
 from app.models.project import Project
-from app.schemas.ai import AIProgressEvent, CategoryPlan, GameplayAnalysis
+from app.schemas.ai import AIProgressEvent, CategoryPlan, GameplayAnalysis, RequirementAnalysisSchema
 from app.schemas.mod import ModEntry
 from app.services.ai_provider import AIProviderError, create_ai_provider
 from app.services.curseforge import CurseForgeClient
 from app.services.mod_resolver import ModResolver, mod_identity
 from app.services.mod_scoring import rank_mods, select_diverse
 from app.services.prompt_pipeline import optimize_prompt
-from app.services.requirements import Requirements, parse_requirements, theme_matches
+from app.services.requirements import Requirements, parse_requirements
 from app.services.modrinth import ModrinthClient
 from app.services.source_registry import ModSourceRegistry, UnknownModSourceError
 
@@ -59,7 +59,6 @@ class AIOrchestrator:
             run.event_log_json = json.dumps(history)
 
     async def _gather_candidates(self, registry, resolver, queries, mc_version, loader, requirements: Requirements | None = None, *, seed: int = 0) -> list[ModEntry]:
-        """Gather compatible candidates; requirements is optional for legacy callers."""
         candidates: dict[str, ModEntry] = {}
         search_terms = list(dict.fromkeys([*queries[:16], ""]))
         for query in search_terms:
@@ -71,8 +70,7 @@ class AIOrchestrator:
                     text = " ".join((hit.name, hit.slug, hit.summary, *hit.categories))
                     if requirements is not None and (hit.downloads < requirements.minimum_downloads or not theme_matches(text, requirements)): continue
                     candidates.setdefault(mod_identity(hit), hit)
-        if requirements is None:
-            return list(candidates.values())
+        if requirements is None: return list(candidates.values())
         return [item.mod for item in rank_mods(list(candidates.values()), requirements, seed=seed) if item.score >= 0]
 
     async def generate(self, project_id: int, *, use_ai: bool = True) -> None:
@@ -96,15 +94,23 @@ class AIOrchestrator:
                 target_count = min(requirements.maximum_mods or 300, max(requirements.minimum_mods or 40, requirements.target_count))
                 queries = list(dict.fromkeys(self._fallback_queries(project, prompt) + list(requirements.required_features)))
                 if use_ai and provider is not None:
-                    await self._emit(project_id, AIProgressEvent(step=1, message="Analyzing requirements..."), run)
+                    await self._emit(project_id, AIProgressEvent(step=1, message="Analyzing structured requirements..."), run)
                     try:
-                        analysis = await provider.chat_json(system_prompt=brief.system_prompt, user_prompt=brief.as_user_prompt(), schema=GameplayAnalysis)
-                        await self._emit(project_id, AIProgressEvent(step=2, message="Personalizing categories...", data={"themes": requirements.themes, "features": requirements.required_features}), run)
-                        plan = await provider.chat_json(system_prompt=brief.system_prompt, user_prompt=f"{brief.as_user_prompt()}\nAnalysis: {analysis.model_dump_json()}", schema=CategoryPlan)
+                        analysis = await provider.chat_json(system_prompt=brief.system_prompt + "\nReturn only the structured requirement analysis. Never invent missing information.", user_prompt=brief.as_user_prompt(), schema=RequirementAnalysisSchema)
+                        if analysis.missing_information:
+                            questions = "; ".join(analysis.missing_information)
+                            await self._emit(project_id, AIProgressEvent(step=1, message=f"More information required: {questions}", status="error", data={"missing_information": analysis.missing_information, "confidence": analysis.confidence}), run)
+                            raise RuntimeError(f"Missing required information: {questions}")
+                        await self._emit(project_id, AIProgressEvent(step=2, message="Personalizing categories...", data={"theme": analysis.theme, "gameplay_style": analysis.gameplay_style, "qol_level": analysis.qol_level, "target_mod_count": analysis.target_mod_count}), run)
+                        if analysis.target_mod_count:
+                            target_count = min(requirements.maximum_mods or 300, max(requirements.minimum_mods or 1, analysis.target_mod_count))
+                        queries = list(dict.fromkeys([*queries, *(analysis.gameplay_style or []), *(analysis.required_mods or [])]))
+                        gameplay = await provider.chat_json(system_prompt=brief.system_prompt, user_prompt=f"{brief.as_user_prompt()}\nStructured analysis: {analysis.model_dump_json()}", schema=GameplayAnalysis)
+                        plan = await provider.chat_json(system_prompt=brief.system_prompt, user_prompt=f"{brief.as_user_prompt()}\nAnalysis: {gameplay.model_dump_json()}", schema=CategoryPlan)
                         if plan.search_queries: queries = list(dict.fromkeys([*plan.search_queries, *queries]))
                     except AIProviderError as exc: logger.warning("AI planning failed; using deterministic requirements: %s", exc)
                 else:
-                    await self._emit(project_id, AIProgressEvent(step=1, message="Analyzing requirements..."), run); await self._emit(project_id, AIProgressEvent(step=2, message="Personalizing categories...", data={"themes": requirements.themes, "features": requirements.required_features}), run)
+                    await self._emit(project_id, AIProgressEvent(step=1, message="Analyzing requirements..."), run); await self._emit(project_id, AIProgressEvent(step=2, message="Personalizing categories..."), run)
                 await self._emit(project_id, AIProgressEvent(step=3, message="Finding requirement-matched mods..."), run)
                 candidates = await self._gather_candidates(registry, resolver, queries, mc_version, loader, requirements, seed=seed)
                 if requirements.minimum_mods is not None and len(candidates) < requirements.minimum_mods: raise RuntimeError(f"Only {len(candidates)} compatible mods matched your requirements; refusing to create a smaller pack than the requested minimum of {requirements.minimum_mods}.")
