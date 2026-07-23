@@ -23,8 +23,6 @@ async def lifespan(app: FastAPI):
     try:
         setup_logging()
         await init_db()
-        # A crash or restart mid-generation would otherwise leave a project
-        # stuck in GENERATING, which makes the start endpoint reject it forever.
         await reset_orphaned_generations()
     except Exception:
         logger.exception("Startup failed")
@@ -32,34 +30,14 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(
-    title="MrPackMaker",
-    description="AI Minecraft Modpack Generator",
-    version="1.6.3",
-    lifespan=lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(title="MrPackMaker", description="AI Minecraft Modpack Generator", version="1.7.2", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8000", "http://127.0.0.1:8000"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "An internal server error occurred.", "code": "internal_error"},
-    )
+    return JSONResponse(status_code=500, content={"detail": "An internal server error occurred.", "code": "internal_error"})
 
 
 app.include_router(health.router, prefix="/api", tags=["health"])

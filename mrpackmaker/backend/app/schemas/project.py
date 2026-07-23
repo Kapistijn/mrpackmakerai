@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, field_validator
 
 from app.models.enums import DifficultyType, LoaderType, PerformancePreference, ProjectStatus, ThemeType
 from app.schemas.mod import ModEntry
@@ -14,6 +14,7 @@ from app.schemas.mod import ModEntry
 class ProjectSettings(BaseModel):
     minecraft_version: str
     loader: LoaderType
+    loader_version: str | None = None
     name: str
     description: str
     theme: ThemeType
@@ -28,6 +29,12 @@ class ProjectSettings(BaseModel):
             raise ValueError("Name cannot be empty")
         return v.strip()
 
+    @field_validator("loader_version")
+    @classmethod
+    def loader_version_clean(cls, v: str | None) -> str | None:
+        value = v.strip() if v else None
+        return value or None
+
 
 class ProjectCreate(ProjectSettings):
     generation_prompt: str = ""
@@ -35,9 +42,7 @@ class ProjectCreate(ProjectSettings):
 
 class ProjectUpdate(BaseModel):
     generation_prompt: str | None = None
-    # Status, generated loader metadata and output paths are server-owned.  In
-    # particular, accepting a client-supplied mrpack_path would allow arbitrary
-    # local-file downloads through the export endpoint.
+    loader_version: str | None = None
     mods: list[ModEntry] | None = None
 
 
@@ -47,6 +52,7 @@ class ProjectResponse(BaseModel):
     description: str
     minecraft_version: str
     loader: LoaderType
+    loader_version: str | None
     theme: ThemeType
     theme_custom: str | None
     difficulty: DifficultyType

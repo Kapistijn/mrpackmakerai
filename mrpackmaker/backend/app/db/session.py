@@ -19,18 +19,8 @@ class Base(DeclarativeBase):
 
 
 DATABASE_URL = f"sqlite+aiosqlite:///{config.db_path.as_posix()}"
-
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    connect_args={"check_same_thread": False},
-)
-
-AsyncSessionLocal = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
+engine = create_async_engine(DATABASE_URL, echo=False, connect_args={"check_same_thread": False})
+AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -54,27 +44,17 @@ async def init_db() -> None:
 
 
 async def reset_orphaned_generations() -> None:
-    """Recover projects left mid-generation by a crash or restart.
-
-    Without this, a project whose in-process job died stays in GENERATING
-    forever and the start endpoint keeps returning 409, so it can never be
-    generated again. We move such projects back to DRAFT and mark their
-    dangling runs as failed.
-    """
+    """Recover jobs left behind by a crash or process restart."""
     from app.models.enums import ProjectStatus
     from app.models.generation import GenerationRun
     from app.models.project import Project
 
     async with AsyncSessionLocal() as session:
         project_result = await session.execute(
-            update(Project)
-            .where(Project.status == ProjectStatus.GENERATING.value)
-            .values(status=ProjectStatus.DRAFT.value)
+            update(Project).where(Project.status == ProjectStatus.GENERATING.value).values(status=ProjectStatus.DRAFT.value)
         )
         await session.execute(
-            update(GenerationRun)
-            .where(GenerationRun.status == "running")
-            .values(status="failed", error="Interrupted by a server restart")
+            update(GenerationRun).where(GenerationRun.status == "running").values(status="failed", error="Interrupted by a server restart")
         )
         await session.commit()
         if project_result.rowcount:
@@ -82,16 +62,12 @@ async def reset_orphaned_generations() -> None:
 
 
 def _apply_compatible_migrations(connection) -> None:
-    """Apply additive SQLite migrations for installs created before v2.
-
-    A production deployment should replace this small bootstrap with Alembic,
-    but this is intentionally safe for the single-file local application: it
-    only adds missing nullable/defaulted columns and never drops user data.
-    """
+    """Apply only additive migrations, preserving every existing project."""
     columns = {column["name"] for column in inspect(connection).get_columns("projects")}
     additions = {
         "difficulty": "VARCHAR(32) NOT NULL DEFAULT 'normal'",
         "performance_preference": "VARCHAR(32) NOT NULL DEFAULT 'balanced'",
+        "loader_version": "VARCHAR(64) NULL",
     }
     for column, definition in additions.items():
         if column not in columns:
