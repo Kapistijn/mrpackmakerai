@@ -38,7 +38,9 @@ class AIOrchestrator:
     def _fallback_queries(project, prompt):
         base = parse_requirements(prompt, theme=project.theme, minimum_mods=project.minimum_mods, maximum_mods=project.maximum_mods, minimum_downloads=project.minimum_downloads)
         design = build_pack_design(base); custom = (project.theme_custom or '').strip()
-        return list(dict.fromkeys(([custom] if custom else []) + design.search_queries + THEME_CATEGORIES.get(ThemeType(project.theme), []) + POPULAR_FALLBACK_QUERIES))
+        theme_queries = list(THEME_CATEGORIES.get(ThemeType(project.theme), ()))
+        design_queries = list(design.search_queries or ())
+        return list(dict.fromkeys(([custom] if custom else []) + design_queries + theme_queries + list(POPULAR_FALLBACK_QUERIES)))
 
     async def _emit(self, project_id, event, run=None):
         if queue := self._events.get(project_id): await queue.put(event)
@@ -74,7 +76,7 @@ class AIOrchestrator:
                 intent = analyze_intent(prompt, theme=project.theme, forbidden=requirements.forbidden_features); profile = build_pack_profile(requirements)
                 seed = project.id ^ int(datetime.now(timezone.utc).timestamp()); brief = optimize_prompt(prompt, minecraft_version=mc_version, loader=loader.value, theme=project.theme, difficulty=project.difficulty, performance_preference=project.performance_preference); design = build_pack_design(requirements)
                 target_count = max(requirements.minimum_mods or 40, min(profile.max_content_mods, requirements.maximum_mods or profile.max_content_mods))
-                queries = list(dict.fromkeys(self._fallback_queries(project, prompt) + list(requirements.required_features) + list(intent.categories) + shader_loader_queries(profile, loader.value)))
+                queries = list(dict.fromkeys(self._fallback_queries(project, prompt) + list(requirements.required_features) + list(intent.categories) + list(shader_loader_queries(profile, loader.value))))
                 await self._emit(project_id, AIProgressEvent(step=1, message="Analyzing intent and designing the pack vision...", data={"intent":intent.to_dict(),"profile":profile.as_pack_info(),"vision":design.vision,"gameplay_loop":design.gameplay_loop}), run)
                 if use_ai and provider is not None:
                     try:
