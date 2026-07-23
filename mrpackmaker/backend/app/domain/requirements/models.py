@@ -11,6 +11,13 @@ def _strings(values: object) -> frozenset[str]:
     return frozenset(str(value).strip().lower() for value in values if str(value).strip())
 
 
+def _optional_string(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip().lower()
+    return value or None
+
+
 @dataclass(frozen=True)
 class RequirementProfile:
     raw_prompt: str
@@ -28,6 +35,20 @@ class RequirementProfile:
     performance_target: PerformanceTarget = PerformanceTarget.BALANCED
     loader_version: str | None = None
     language: str = "en"
+    desired_categories: frozenset[str] = field(default_factory=frozenset)
+    forbidden_categories: frozenset[str] = field(default_factory=frozenset)
+    gameplay_loop: str | None = None
+    difficulty: str | None = None
+    progression_style: str | None = None
+    playstyle_preferences: frozenset[str] = field(default_factory=frozenset)
+    pack_styles: frozenset[str] = field(default_factory=frozenset)
+    hardware_profile: str | None = None
+    fps_priority: int | None = None
+    shaders: bool | None = None
+    ram_budget_mb: int | None = None
+    client_server_preference: str | None = None
+    required_mods: frozenset[str] = field(default_factory=frozenset)
+    forbidden_mods: frozenset[str] = field(default_factory=frozenset)
 
     def __post_init__(self) -> None:
         if not self.raw_prompt.strip() or not self.minecraft_version.strip():
@@ -43,29 +64,29 @@ class RequirementProfile:
             raise ValueError("mod counts and downloads cannot be negative")
         if self.max_mods is not None and (self.max_mods < 0 or self.max_mods < self.min_mods):
             raise ValueError("max_mods must be >= min_mods")
-        object.__setattr__(self, "subthemes", _strings(self.subthemes))
-        object.__setattr__(self, "features", _strings(self.features))
-        object.__setattr__(self, "exclusions", _strings(self.exclusions))
+        if self.fps_priority is not None and not 0 <= self.fps_priority <= 100:
+            raise ValueError("fps_priority must be between 0 and 100")
+        if self.ram_budget_mb is not None and self.ram_budget_mb <= 0:
+            raise ValueError("ram_budget_mb must be positive")
+        for name in ("subthemes", "features", "exclusions", "desired_categories", "forbidden_categories", "playstyle_preferences", "pack_styles", "required_mods", "forbidden_mods"):
+            object.__setattr__(self, name, _strings(getattr(self, name)))
+        for name in ("theme", "gameplay_loop", "difficulty", "progression_style", "hardware_profile", "client_server_preference"):
+            object.__setattr__(self, name, _optional_string(getattr(self, name)))
         overlap = self.exclusions & (self.subthemes | self.features)
+        overlap |= self.forbidden_categories & self.desired_categories
         if overlap:
             raise ValueError(f"values cannot be both included and excluded: {sorted(overlap)}")
+        if self.required_mods & self.forbidden_mods:
+            raise ValueError("a mod cannot be both required and forbidden")
 
     def is_excluded(self, category: str) -> bool:
-        return category.strip().lower() in self.exclusions
+        return category.strip().lower() in self.exclusions or category.strip().lower() in self.forbidden_categories
 
     def evolve(self, **changes: object) -> "RequirementProfile":
         return replace(self, **changes)
 
     def to_dict(self) -> dict[str, object]:
-        return to_json_safe({
-            "raw_prompt": self.raw_prompt, "minecraft_version": self.minecraft_version,
-            "loader": self.loader, "theme": self.theme, "subthemes": self.subthemes,
-            "features": self.features, "exclusions": self.exclusions, "min_mods": self.min_mods,
-            "max_mods": self.max_mods, "min_downloads": self.min_downloads,
-            "multiplayer": self.multiplayer, "server": self.server,
-            "performance_target": self.performance_target, "loader_version": self.loader_version,
-            "language": self.language,
-        })
+        return to_json_safe({name: getattr(self, name) for name in self.__dataclass_fields__})
 
 
 @dataclass(frozen=True)
