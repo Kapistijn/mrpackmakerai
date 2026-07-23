@@ -96,7 +96,12 @@ class OpenAICompatibleProvider:
             raise AIProviderError(
                 f"Could not list models from {self.provider_id}: {exc}"
             ) from exc
-        return [model.id for model in models.data if model.id]
+        # Some OpenAI-compatible servers respond 200 with a body that has no
+        # `data` array (e.g. LM Studio reached on `/models` instead of
+        # `/v1/models`, or a proxy returning a non-standard shape). Guard
+        # against None so a misconfigured endpoint surfaces as 'not reachable'
+        # rather than a 500 TypeError.
+        return [model.id for model in (models.data or []) if model.id]
 
     async def get_model(self) -> str:
         if self._model:
