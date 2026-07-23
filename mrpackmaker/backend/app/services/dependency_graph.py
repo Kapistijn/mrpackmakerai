@@ -16,27 +16,56 @@ class DependencyGraph:
     @staticmethod
     def dependency_key(dep: ModDependency) -> str | None: return f"{dep.source or 'modrinth'}:{dep.project_id}" if dep.project_id else None
     def add_mod(self, mod: ModEntry) -> None:
-        key = self.mod_key(mod); node = self.nodes.setdefault(key, GraphNode(key, mod))
+        key=self.mod_key(mod); node=self.nodes.setdefault(key,GraphNode(key,mod))
         for dep in mod.dependencies:
-            dep_key = self.dependency_key(dep)
+            dep_key=self.dependency_key(dep)
             if dep_key and dep_key != key and dep_key not in node.dependencies: node.dependencies.append(dep_key)
         self._rebuild_reverse_edges()
     def _rebuild_reverse_edges(self) -> None:
         for node in self.nodes.values(): node.dependents.clear()
         for node in self.nodes.values():
             for dep_key in node.dependencies:
-                if dep_key in self.nodes and node.key not in self.nodes[dep_key].dependents: self.nodes[dep_key].dependents.append(node.key)
-    def _required_dependency(self, node: GraphNode, dep_key: str) -> bool: return any(self.dependency_key(dep) == dep_key and dep.dependency_type.casefold() in REQUIRED_TYPES for dep in node.mod.dependencies)
-    def get_missing_required(self) -> list[str]: return sorted({dep_key for node in self.nodes.values() for dep_key in node.dependencies if self._required_dependency(node, dep_key) and dep_key not in self.nodes})
-    def get_optional_missing(self) -> list[str]: return sorted({dep_key for node in self.nodes.values() for dep_key in node.dependencies if not self._required_dependency(node, dep_key) and dep_key not in self.nodes})
-    def get_all_dependency_keys(self) -> set[str]: return {dep_key for node in self.nodes.values() for dep_key in node.dependencies}
-    def get_conflicts(self) -> list[tuple[str, str]]:
-        conflicts = set()
-        for key, node in self.nodes.items():
+                dependency=self.nodes.get(dep_key)
+                if dependency and node.key not in dependency.dependents: dependency.dependents.append(node.key)
+    def _required_dependency(self,node:GraphNode,dep_key:str)->bool:
+        return any(self.dependency_key(dep)==dep_key and dep.dependency_type.casefold() in REQUIRED_TYPES for dep in node.mod.dependencies)
+    def get_missing_required(self)->list[str]: return sorted({dep for node in self.nodes.values() for dep in node.dependencies if self._required_dependency(node,dep) and dep not in self.nodes})
+    def get_optional_missing(self)->list[str]: return sorted({dep for node in self.nodes.values() for dep in node.dependencies if not self._required_dependency(node,dep) and dep not in self.nodes})
+    def get_all_dependency_keys(self)->set[str]: return {dep for node in self.nodes.values() for dep in node.dependencies}
+    def get_conflicts(self)->list[tuple[str,str]]:
+        conflicts=set()
+        for key,node in self.nodes.items():
             for dep in node.mod.dependencies:
-                if dep.dependency_type.casefold() == "incompatible":
-                    dep_key = self.dependency_key(dep)
-                    if dep_key in self.nodes: conflicts.add(tuple(sorted((key, dep_key))))
+                if dep.dependency_type.casefold() != 'incompatible': continue
+                dep_key=self.dependency_key(dep)
+                if dep_key and dep_key in self.nodes: conflicts.add(tuple(sorted((key,dep_key))))
         return sorted(conflicts)
-    def get_cycles(self) -> list[list[str]]: return []
-    def topological_order(self) -> list[str]: return sorted(self.nodes)
+    def get_cycles(self)->list[list[str]]:
+        cycles=set(); visiting=[]; active=set(); visited=set()
+        def canonical(path):
+            ring=path[:-1]; rotations=[tuple(ring[i:]+ring[:i]) for i in range(len(ring))]; return min(rotations)
+        def visit(key):
+            if key in active:
+                cycles.add(canonical(visiting[visiting.index(key):]+[key])); return
+            if key in visited: return
+            active.add(key); visiting.append(key)
+            for dep in sorted(self.nodes[key].dependencies):
+                if dep in self.nodes: visit(dep)
+            visiting.pop(); active.remove(key); visited.add(key)
+        for key in sorted(self.nodes): visit(key)
+        return [list(cycle) for cycle in sorted(cycles)]
+    def topological_order(self)->list[str]:
+        cycles=self.get_cycles()
+        if cycles: raise ValueError(f"Dependency cycle detected: {' -> '.join(cycles[0])}")
+        indegree={key:0 for key in self.nodes}
+        for node in self.nodes.values():
+            for dep in node.dependencies:
+                if dep in indegree: indegree[node.key]+=1
+        ready=sorted(key for key,degree in indegree.items() if degree==0); result=[]
+        while ready:
+            key=ready.pop(0); result.append(key)
+            for dependent in sorted(self.nodes[key].dependents):
+                indegree[dependent]-=1
+                if indegree[dependent]==0: ready.append(dependent); ready.sort()
+        if len(result)!=len(self.nodes): raise ValueError('Dependency graph could not be ordered')
+        return result
