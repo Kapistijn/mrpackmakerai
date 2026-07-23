@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 
 DUPLICATE_CONSTRAINT = "deduplicate by project identity, slug, name, file and hashes"
+DEPENDENCY_CONSTRAINT = "resolve required dependencies recursively"
 CONTENT_INTENT_CONSTRAINTS = {
     "bosses": "prefer content with bosses when compatible",
     "monsters": "prefer new hostile mobs when compatible",
@@ -102,7 +103,15 @@ def optimize_prompt(prompt: str, *, minecraft_version: str, loader: str, theme: 
     request = original or f"Create a {theme} Minecraft modpack."
     intent = extract_intent(original)
     errors = validate_intent(intent)
-    constraints: list[str] = [f"Minecraft {minecraft_version} with {loader} only", "use stable compatible releases where available", "resolve required dependencies transitively without cycles", "compare Modrinth and CurseForge without duplicate projects", DUPLICATE_CONSTRAINT, "reject incompatible, missing-file or unsafe-download entries", f"target {difficulty} gameplay and a {performance_preference} profile"]
+    constraints: list[str] = [
+        f"Minecraft {minecraft_version} with {loader} only",
+        "use stable compatible releases where available",
+        DEPENDENCY_CONSTRAINT,
+        "compare Modrinth and CurseForge without duplicate projects",
+        DUPLICATE_CONSTRAINT,
+        "reject incompatible, missing-file or unsafe-download entries",
+        f"target {difficulty} gameplay and a {performance_preference} profile",
+    ]
     if intent.minimum_mods is not None: constraints.append(f"select at least {intent.minimum_mods} compatible mods")
     if intent.maximum_mods is not None: constraints.append(f"never exceed {intent.maximum_mods} total mods")
     if intent.forbidden_features: constraints.append(f"avoid: {', '.join(intent.forbidden_features)}")
