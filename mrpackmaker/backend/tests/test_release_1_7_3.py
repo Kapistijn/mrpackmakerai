@@ -1,6 +1,6 @@
 """1.7.3 intelligence and loader regression tests."""
 
-from types import SimpleNamespace
+import asyncio
 
 import pytest
 
@@ -35,19 +35,17 @@ def test_scoring_does_not_make_downloads_the_primary_signal():
     assert ranked[0].mod.name == "Horror Bosses"
 
 
-@pytest.mark.asyncio
-async def test_loader_resolver_honors_manual_version():
+def test_loader_resolver_honors_manual_version():
     class Client:
         async def get_versions(self, project_id, mc, loader):
             return [{"version_number": "47.2.0", "version_type": "release"}]
-    result = await LoaderResolver(Client()).resolve(LoaderType.FORGE, "1.20.1", "47.2.0")
+    result = asyncio.run(LoaderResolver(Client()).resolve(LoaderType.FORGE, "1.20.1", "47.2.0"))
     assert result.version == "47.2.0" and result.source == "manual"
 
 
-@pytest.mark.asyncio
-async def test_loader_resolver_rejects_incompatible_manual_version():
+def test_loader_resolver_rejects_incompatible_manual_version():
     class Client:
         async def get_versions(self, project_id, mc, loader):
             return []
     with pytest.raises(LoaderResolutionError):
-        await LoaderResolver(Client()).resolve(LoaderType.FORGE, "1.20.1", "bad")
+        asyncio.run(LoaderResolver(Client()).resolve(LoaderType.FORGE, "1.20.1", "bad"))
