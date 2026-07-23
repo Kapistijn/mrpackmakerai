@@ -1,80 +1,27 @@
-"""Deterministic non-mod pack assets: configs, options, shader metadata.
-
-The MRPack writer uses these to populate the ``overrides/`` tree and the
-``pack_info.json`` descriptor, so an exported pack reflects the chosen RAM,
-FPS, shader and performance settings instead of shipping mods alone.
-"""
-
+"""Concrete export assets and shader loader metadata."""
 from __future__ import annotations
-
 import json
+from app.services.pack_profile import PackProfile,SHADER_OFF
 
-from app.schemas.mod import ModEntry
-from app.services.pack_profile import PackProfile, SHADER_ENABLED, SHADER_OFF
-
-
-def build_pack_info(profile: PackProfile) -> dict:
-    return profile.as_pack_info()
-
-
-def _render_distance(profile: PackProfile) -> int:
-    if profile.recommended_ram_gb >= 16:
-        return 16
-    if profile.recommended_ram_gb >= 8:
-        return 12
-    return 8
-
-
-def default_options_txt(profile: PackProfile) -> str:
-    # 1 = fancy graphics, 0 = fast graphics
-    graphics = "0" if profile.performance_profile == "performance" else "1"
-    lines = [
-        f"renderDistance:{_render_distance(profile)}",
-        f"graphicsMode:{graphics}",
-        "maxFps:%d" % (profile.target_fps or 120),
-        "entityShadows:%s" % ("false" if profile.performance_profile == "performance" else "true"),
-    ]
-    return "\n".join(lines) + "\n"
-
-
-def shaderpack_note(profile: PackProfile) -> str | None:
-    if profile.shader_mode == SHADER_OFF:
-        return None
-    recommended = {
-        "low": "ComplementaryUnbound (Potato preset)",
-        "medium": "ComplementaryReimagined (Medium preset)",
-        "high": "BSL / Complementary (High preset)",
-    }[profile.shader_quality]
-    mode = "auto-enabled" if profile.shader_mode == SHADER_ENABLED else "supported (install a pack to enable)"
-    return (
-        f"Shader support: {mode}\n"
-        f"Recommended shaderpack: {recommended}\n"
-        f"Place .zip shaderpacks in this folder. A shader loader (Iris/Oculus) is bundled.\n"
-    )
-
-
-def override_files(profile: PackProfile, mods: list[ModEntry]) -> dict[str, str]:
-    """Return a mapping of override path -> file content (relative to overrides/)."""
-    pack_info = json.dumps(build_pack_info(profile), indent=2) + "\n"
-    files: dict[str, str] = {
-        "pack_info.json": pack_info,
-        "options.txt": default_options_txt(profile),
-        "config/mrpackmaker-profile.json": pack_info,
-    }
-    note = shaderpack_note(profile)
-    if note is not None:
-        files["shaderpacks/README.txt"] = note
-    if profile.resourcepack_support:
-        files["resourcepacks/README.txt"] = "Drop .zip resource packs in this folder.\n"
+def build_pack_info(profile): return profile.as_pack_info()
+def _render_distance(profile): return 16 if profile.recommended_ram_gb>=16 else 12 if profile.recommended_ram_gb>=8 else 8
+def default_options_txt(profile):
+    graphics='0' if profile.performance_profile=='performance' else '1'
+    return '\n'.join([f'renderDistance:{_render_distance(profile)}',f'graphicsMode:{graphics}',f'maxFps:{profile.target_fps or 120}',f'entityShadows:{"false" if profile.performance_profile=="performance" else "true"}'])+'\n'
+def shaderpack_metadata(profile):
+    if profile.shader_mode==SHADER_OFF:return None
+    return {'mode':profile.shader_mode,'recommended_shaderpack':{'low':'ComplementaryUnbound (Potato preset)','medium':'ComplementaryReimagined (Medium preset)','high':'BSL / Complementary (High preset)'}[profile.shader_quality],'loader_required':True}
+def override_files(profile,mods):
+    info=json.dumps(build_pack_info(profile),indent=2)+'\n';files={'pack_info.json':info,'options.txt':default_options_txt(profile),'config/mrpackmaker-profile.json':info}
+    metadata=shaderpack_metadata(profile)
+    if metadata: files['shaderpacks/mrpackmaker-shader.json']=json.dumps(metadata,indent=2)+'\n'
+    if profile.resourcepack_support: files['resourcepacks/mrpackmaker-resourcepack.json']='{\n  "supported": true\n}\n'
     return files
-
-
-def shader_loader_queries(profile: PackProfile, loader: str) -> list[str]:
-    """Search queries for the shader loader stack, empty when shaders are off."""
-    if profile.shader_mode == SHADER_OFF:
-        return []
-    loader = (loader or "").casefold()
-    if loader == "fabric":
-        return ["iris", "sodium"]
-    # Forge / NeoForge equivalents
-    return ["oculus", "embeddium"]
+def shader_loader_queries(profile,loader):
+    if profile.shader_mode==SHADER_OFF:return []
+    return ['iris','sodium'] if (loader or '').casefold()=='fabric' else ['oculus','embeddium']
+def is_shader_loader(mod): return any(x in ' '.join((mod.id,mod.slug,mod.name)).casefold() for x in ('iris','oculus'))
+def ensure_shader_loader(candidates,profile):
+    if profile.shader_mode==SHADER_OFF:return list(candidates)
+    loaders=[m for m in candidates if is_shader_loader(m)]
+    return ([loaders[0]]+[m for m in candidates if m is not loaders[0]]) if loaders else list(candidates)
