@@ -50,31 +50,34 @@ def rank_mods(mods: list[ModEntry], requirements: Requirements, *, seed: int) ->
     return sorted(ranked, key=lambda item: item.score, reverse=True)
 
 
-def select_diverse(ranked: list[ScoredMod], count: int) -> list[ScoredMod]:
-    """Select high-scoring candidates while avoiding a single-category pack.
+def select_diverse(candidates: list[ModEntry], count: int) -> list[ModEntry]:
+    """Select high-ranked candidates while avoiding a single-category pack.
 
-    The first pass covers each available category, then fills remaining slots by
-    score. This keeps horror packs from becoming 150 copies of one utility type
-    without sacrificing the user's ranking or compatibility constraints.
+    Operates on the already-ranked ``ModEntry`` list produced by the
+    orchestrator (``rank_mods`` output unwrapped to its ``.mod`` entries). The
+    first pass covers each available category, then remaining slots are filled
+    in ranked order. This keeps horror packs from becoming 150 copies of one
+    utility type without sacrificing the user's ranking or compatibility
+    constraints.
     """
     if count <= 0:
         return []
-    selected: list[ScoredMod] = []
+    selected: list[ModEntry] = []
     used: set[str] = set()
     categories: set[str] = set()
-    for item in ranked:
-        key = item.mod.source + ":" + item.mod.id
+    for item in candidates:
+        key = item.source + ":" + item.id
         if key in used:
             continue
-        item_categories = {category.casefold() for category in item.mod.categories}
+        item_categories = {category.casefold() for category in item.categories}
         if item_categories - categories:
             selected.append(item)
             used.add(key)
             categories.update(item_categories)
         if len(selected) >= count:
             return selected
-    for item in ranked:
-        key = item.mod.source + ":" + item.mod.id
+    for item in candidates:
+        key = item.source + ":" + item.id
         if key not in used:
             selected.append(item)
             used.add(key)
