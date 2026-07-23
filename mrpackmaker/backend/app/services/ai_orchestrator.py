@@ -27,7 +27,10 @@ class AIOrchestrator:
  def __init__(self)->None:self._active={};self._events={};self._final={}
  @staticmethod
  def _fallback_queries(project,prompt):
-  base=parse_requirements(prompt,theme=project.theme,minimum_mods=project.minimum_mods,maximum_mods=project.maximum_mods,minimum_downloads=project.minimum_downloads); design=build_pack_design(base); return list(dict.fromkeys([*design.search_queries,*THEME_CATEGORIES.get(ThemeType(project.theme),[]),*POPULAR_FALLBACK_QUERIES]))
+  base=parse_requirements(prompt,theme=project.theme,minimum_mods=project.minimum_mods,maximum_mods=project.maximum_mods,minimum_downloads=project.minimum_downloads); design=build_pack_design(base)
+  custom=(project.theme_custom or '').strip()
+  custom_queries=[custom] if custom else []
+  return list(dict.fromkeys([*custom_queries,*design.search_queries,*THEME_CATEGORIES.get(ThemeType(project.theme),[]),*POPULAR_FALLBACK_QUERIES]))
  async def _emit(self,project_id,event,run=None):
   if queue:=self._events.get(project_id): await queue.put(event)
   if event.status in TERMINAL_STATUSES:self._final[project_id]=event
@@ -35,7 +38,7 @@ class AIOrchestrator:
    history=json.loads(run.event_log_json or "[]");history.append(event.model_dump(mode="json"));run.event_log_json=json.dumps(history)
  async def _gather_candidates(self,registry,resolver,queries,mc_version,loader,requirements=None,*,seed=0):
   candidates={}
-  for query in list(dict.fromkeys([*queries[:32],""])):
+  for query in list(dict.fromkeys([*queries[:32],"" ])):
    for source in registry.providers(available_only=True):
     try:hits,_=await source.search(query,mc_version,loader,limit=50)
     except Exception as exc:logger.warning("Search failed on %s for '%s': %s",source.source_id,query,exc);continue
