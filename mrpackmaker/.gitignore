@@ -15,10 +15,16 @@ build/
 node_modules/
 frontend/dist/
 
+# Build artifacts
+frontend/tsconfig.tsbuildinfo
+
 # App data
 data/
 output/
 config.json
+
+# Installer
+install-log.txt
 
 # IDE
 .vscode/

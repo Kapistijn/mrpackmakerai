@@ -5,9 +5,7 @@ A professional AI-powered web application that automatically generates fully fun
 ## Quickstart (download & test)
 
 1. Install [Python 3.10+](https://python.org) and [Node.js 18+](https://nodejs.org).
-2. Start the installer (Windows):
-   - **Recommended:** double-click **`installer.vbs`** or **`install.bat`** — the PowerShell installer with a live progress spinner.
-   - Or double-click the classic **`installer.bat`** (plain batch, still supported).
+2. Double-click **`installer.vbs`** (or **`install.bat`**) in the project root. It installs everything, builds the UI, and starts the app, showing a live progress spinner.
 3. Your browser opens at **http://localhost:8000**.
 4. Click **New Project**, fill in the settings, then on the prompt step click **Quick pack (no AI)**.
 5. Review the mods, run **Check Compatibility**, click **Generate MRPack**, then **Download**.
@@ -16,6 +14,25 @@ A professional AI-powered web application that automatically generates fully fun
 Already installed? Just run **`start.bat`** next time.
 
 > **No AI needed to get a pack.** "Quick pack" builds a working modpack from the most popular compatible mods for your version, loader and theme. Set up LM Studio, Ollama or LiteLLM later for AI-curated packs.
+
+## Project layout
+
+The project root only contains the files you actually use plus the two app packages:
+
+```
+mrpackmaker/
+  installer.vbs        <- double-click to install (recommended)
+  install.bat          <- same installer, if you prefer a .bat
+  start.bat            <- run again after installing
+  config.example.json
+  README.md
+  ARCHITECTURE.md
+  backend/             <- FastAPI backend (the app)
+  frontend/            <- React frontend (the app)
+  scripts/             <- helper scripts
+    install.ps1        <- the actual installer engine (spinner + logging)
+    test_ai.py         <- optional: check your AI provider connection
+```
 
 ## Features
 
@@ -61,15 +78,16 @@ Output/
 
 ### Quick Install (Windows)
 
-Two installers are provided; both do the same seven steps and then start the app:
+Double-click **`installer.vbs`** or **`install.bat`** in the project root. Both launch the PowerShell installer (`scripts/install.ps1`), which:
 
-- **`install.bat`** / **`installer.vbs`** — the modern **PowerShell** installer (`install.ps1`). Shows an animated spinner and an elapsed timer for each step so it never looks frozen, and writes full output to `install-log.txt`.
-- **`installer.bat`** — the classic pure-batch installer, kept as a fallback.
+- Shows an animated spinner and an elapsed timer for every step so it never looks frozen.
+- Installs each backend package as its own visible sub-step (`Installing fastapi (1/11)`, ...).
+- Writes full output to `install-log.txt`; on failure it prints the last lines of the log.
 
-Either way it will automatically:
+Steps performed:
 1. Check Python and Node.js installation
 2. Create a Python virtual environment
-3. Install backend dependencies
+3. Install backend dependencies (one sub-step per package)
 4. Install frontend dependencies
 5. Create config.json
 6. Build the frontend
@@ -166,6 +184,8 @@ All supported providers speak the OpenAI chat-completions protocol, so switching
 
 > Ollama needs no API key for local use. If a build or model rejects strict JSON mode, MrPackMaker automatically retries the request without it and enforces JSON via the prompt, so generation still works.
 
+> Tip: you can also verify your provider from a terminal with `python scripts/test_ai.py`.
+
 ### Important: Model Selection (AI mode only)
 
 **The model you use is critical!** The AI requires an **instruction-tuned model** that can follow complex instructions and return structured JSON.
@@ -185,7 +205,7 @@ If the AI is unavailable or returns unusable output, generation automatically fa
 ## Usage
 
 1. **(Optional) Start LM Studio, Ollama or LiteLLM** and select the model in the Settings page.
-2. **Start the app** with `install.bat` / `installer.vbs` (first time) or `start.bat`, then open `http://localhost:8000`.
+2. **Start the app** with `installer.vbs` / `install.bat` (first time) or `start.bat`, then open `http://localhost:8000`.
 3. **Create a project** — Minecraft version, loader, theme, difficulty, performance preference.
 4. **Generate**:
    - **Quick pack (no AI)** for an instant, reliable pack, or
@@ -243,11 +263,11 @@ python -m pytest -q
 ## Troubleshooting
 
 ### Installer appears to hang (step [4/7] "Installing collected packages")
-- Prefer the PowerShell installer (`install.bat` / `installer.vbs`): it shows a spinner and elapsed timer so you can see it is still working, and logs everything to `install-log.txt`.
+- The PowerShell installer (`installer.vbs` / `install.bat`) shows a spinner and elapsed timer per package so you can see it is still working, and logs everything to `install-log.txt`.
 - **Close any running MrPackMaker window first.** A backend still serving on port 8000 locks files inside `venv`, so pip stalls while trying to replace packages on a re-install. Close it (Ctrl+C in its window) and run the installer again.
-- **Windows console QuickEdit**: clicking inside the black window selects text and *pauses* the process until you press a key. If output froze after you clicked, press any key in the window.
+- **Windows console QuickEdit**: clicking inside the window selects text and *pauses* the process until you press a key. If output froze after you clicked, press any key in the window.
 - **Antivirus**: real-time scanning can briefly hold large wheels (e.g. `cryptography`). Give it a moment, or allow-list the project folder.
-- Both installers run pip with `--no-input` so it can no longer block waiting for a prompt.
+- The installer runs pip with `--no-input` so it can no longer block waiting for a prompt.
 
 ### AI Connection Failed
 - Ensure LM Studio / Ollama / LiteLLM is running and a model is loaded

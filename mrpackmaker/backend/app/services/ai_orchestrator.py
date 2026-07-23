@@ -33,6 +33,9 @@ from app.services.source_registry import ModSourceRegistry, UnknownModSourceErro
 
 logger = logging.getLogger(__name__)
 
+# Terminal event statuses: once one of these is emitted the generation is over.
+TERMINAL_STATUSES = {"complete", "error", "cancelled"}
+
 THEME_CATEGORIES = {
     ThemeType.TECHNOLOGY: ["technology", "storage", "utility"],
     ThemeType.ADVENTURE: ["adventure", "worldgen", "mobs"],
@@ -58,6 +61,11 @@ class AIOrchestrator:
     def __init__(self) -> None:
         self._active: dict[int, asyncio.Task[None]] = {}
         self._events: dict[int, asyncio.Queue[AIProgressEvent | None]] = {}
+        # Last terminal event per project, retained so a client that opens the
+        # progress stream *after* a fast generation already finished still
+        # learns the outcome instead of getting an empty stream. Cleared when a
+        # new run starts for the project and popped once replayed.
+        self._final: dict[int, AIProgressEvent] = {}
 
     def _locked_context(self, project: Project) -> str:
         theme = f"{project.theme} ({project.theme_custom})" if project.theme_custom else project.theme
@@ -100,6 +108,10 @@ class AIOrchestrator:
         queue = self._events.get(project_id)
         if queue:
             await queue.put(event)
+        # Retain terminal events so a late subscriber can still be told the
+        # outcome even after the live queue has been cleaned up.
+        if event.status in TERMINAL_STATUSES:
+            self._final[project_id] = event
         if run is not None:
             history = json.loads(run.event_log_json or "[]")
             history.append(event.model_dump(mode="json"))
@@ -351,11 +363,9 @@ class AIOrchestrator:
             await registry.close()
             await queue.put(None)
             self._active.pop(project_id, None)
-            # Drop the per-project event queue as well. Without this the dict
-            # grows for the lifetime of the process, and a client that connects
-            # to the stream *after* completion would block forever on an empty
-            # queue that never receives another sentinel. A late subscriber now
-            # simply finds no queue and the stream ends cleanly.
+            # Drop the per-project event queue so `_events` does not grow for
+            # the lifetime of the process. The terminal event is preserved in
+            # `_final` so a late subscriber is still informed.
             self._events.pop(project_id, None)
 
     async def _mark_failed(self, project_id: int, message: str) -> None:
@@ -383,6 +393,8 @@ class AIOrchestrator:
     def start_generation(self, project_id: int, *, use_ai: bool = True) -> None:
         if self.is_active(project_id):
             raise RuntimeError("Generation already in progress")
+        # A fresh run supersedes any retained terminal event from a prior run.
+        self._final.pop(project_id, None)
         self._events[project_id] = asyncio.Queue()
         self._active[project_id] = asyncio.create_task(self.generate(project_id, use_ai=use_ai))
 
@@ -393,6 +405,12 @@ class AIOrchestrator:
     async def stream_events(self, project_id: int) -> AsyncGenerator[AIProgressEvent, None]:
         queue = self._events.get(project_id)
         if queue is None:
+            # No live generation. If one finished recently, replay its terminal
+            # event exactly once so a late subscriber still learns the outcome
+            # instead of receiving an empty stream and hanging on "connecting".
+            final = self._final.pop(project_id, None)
+            if final is not None:
+                yield final
             return
         while True:
             event = await queue.get()

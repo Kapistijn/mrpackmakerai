@@ -1,32 +1,36 @@
-"""Test script to verify LM Studio AI connection and model compatibility."""
+"""Diagnostic: verify the configured AI provider (LM Studio / Ollama / LiteLLM).
+
+Moved under scripts/ in 1.6.0. Run from anywhere:
+    python scripts\test_ai.py
+"""
 
 import asyncio
 import sys
 from pathlib import Path
 
-# Add backend to path
-sys.path.insert(0, str(Path(__file__).parent / "backend"))
+# This file lives in <project>/scripts, so the backend package is ../backend.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from app.services.lmstudio import LMStudioClient
 from app.schemas.ai import GameplayAnalysis
+from app.services.lmstudio import LMStudioClient
 
 
 async def test_ai_connection():
     print("=" * 60)
-    print("LM Studio AI Connection Test")
+    print("AI Connection Test")
     print("=" * 60)
     print()
 
     lm = LMStudioClient()
-    
+
     # Test 1: Check availability
-    print("Test 1: Checking LM Studio availability...")
+    print("Test 1: Checking provider availability...")
     available = await lm.is_available()
     if available:
-        print("[OK] LM Studio is available")
+        print("[OK] Provider is available")
     else:
-        print("[FAIL] LM Studio is not available")
-        print("   Make sure LM Studio is running on http://localhost:1234")
+        print("[FAIL] Provider is not available")
+        print("   Make sure LM Studio / Ollama / LiteLLM is running and reachable")
         return False
     print()
 
@@ -35,16 +39,14 @@ async def test_ai_connection():
     try:
         model = await lm.get_model()
         print(f"[OK] Current model: {model}")
-        print()
     except Exception as e:
         print(f"[FAIL] Failed to get model: {e}")
-        print("   Make sure a model is loaded in LM Studio")
+        print("   Make sure a model is loaded / pulled")
         return False
     print()
 
     # Test 3: Test JSON response
-    print("Test 3: Testing JSON response capability...")
-    print("   (This tests if the model can return structured JSON)")
+    print("Test 3: Testing structured JSON capability...")
     try:
         result = await lm.chat_json(
             system_prompt="You are a helpful assistant. Return valid JSON.",
@@ -53,27 +55,10 @@ async def test_ai_connection():
         )
         print("[OK] Model can return structured JSON")
         print(f"   Response: {result}")
-        print()
     except Exception as e:
         print(f"[FAIL] Model failed JSON test: {e}")
-        print("   This usually means you're using a base model instead of an instruction-tuned model.")
-        print("   Recommended: Use 'Llama 3 Instruct', 'Mistral Instruct', or 'Phi-3 Instruct'")
-        return False
-    print()
-
-    # Test 4: Test with modpack-related prompt
-    print("Test 4: Testing with modpack-related prompt...")
-    try:
-        result = await lm.chat_json(
-            system_prompt="You are a Minecraft modpack expert. Return JSON with gameplay_goals array.",
-            user_prompt="Create a simple technology modpack for Minecraft 1.20.1",
-            schema=GameplayAnalysis,
-        )
-        print("[OK] Model can handle modpack-related prompts")
-        print(f"   Gameplay goals: {result.gameplay_goals}")
-        print()
-    except Exception as e:
-        print(f"[FAIL] Model failed modpack test: {e}")
+        print("   This usually means a base model instead of an instruction-tuned one.")
+        print("   Recommended: 'Llama 3 Instruct', 'Mistral Instruct', or 'Phi-3 Instruct'")
         return False
     print()
 
@@ -93,5 +78,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n\nUnexpected error: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
