@@ -1,10 +1,4 @@
-"""Deterministic, inspectable prompt pipeline for AI generation.
-
-The original prompt is never forwarded to the generation model by this module.
-It is converted into an intent profile, validated, enriched and rendered as a
-bounded brief. A provider-backed optimizer can replace the extraction stage
-without changing the generation contract.
-"""
+"""Deterministic, inspectable prompt pipeline for AI generation."""
 
 from __future__ import annotations
 
@@ -102,7 +96,7 @@ def optimize_prompt(prompt: str, *, minecraft_version: str, loader: str, theme: 
     constraints.extend(f"intent: {item}" for item in intent.themes + intent.gameplay_styles)
     constraints.extend(f"resolve ambiguity: {error}" for error in errors)
     priorities = tuple(dict.fromkeys((performance_preference, "compatibility", "stability", "user intent")))
-    normalized = f"Create a {theme} Minecraft modpack for {minecraft_version} ({loader}). Interpret the user's intent as: {request}"
+    normalized = f"Create a {theme} Minecraft modpack for Minecraft {minecraft_version} ({loader}). Interpret the user's intent as: {request}"
     system = ("You are a senior Minecraft modpack architect. The original user text is unavailable to you. "
               "Select complete stable compatible projects, never invent IDs, use only supplied candidates, "
               "preserve version and loader, deduplicate sources, resolve required dependencies, and explain trade-offs.")
