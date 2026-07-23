@@ -8,7 +8,7 @@ from app.config import config
 from app.models.enums import LoaderType
 from app.models.project import Project
 from app.schemas.mod import ModEntry
-from app.services.mrpack_validation import MrpackValidationError, validate_export_inputs
+from app.services.mrpack_validation import ExportIssue, MrpackValidationError, validate_export_inputs
 logger=logging.getLogger(__name__)
 LOADER_DEPENDENCY_KEYS={LoaderType.FABRIC:'fabric-loader',LoaderType.FORGE:'forge',LoaderType.NEOFORGE:'neoforge'}
 def _sanitize_filename(name:str)->str:
@@ -16,7 +16,7 @@ def _sanitize_filename(name:str)->str:
 class MrpackGenerator:
     def build_index(self,project:Project,mods:list[ModEntry])->dict[str,Any]:
         loader=LoaderType(project.loader); selected_loader=project.loader_version or project.resolved_loader_version
-        if not selected_loader: raise MrpackValidationError([])
+        if not selected_loader: raise MrpackValidationError([ExportIssue('loader_version_missing','The selected loader version has not been resolved.')])
         loader_key=LOADER_DEPENDENCY_KEYS[loader]
         index={'formatVersion':1,'game':'minecraft','versionId':datetime.now(timezone.utc).strftime('%Y.%m.%d-%H%M%S'),'name':project.name,'summary':project.description,'files':[],'dependencies':{'minecraft':project.minecraft_version,loader_key:selected_loader}}
         for mod in mods:
@@ -30,7 +30,8 @@ class MrpackGenerator:
             if any(name.startswith(('/','\\')) or '..' in Path(name).parts for name in members): raise RuntimeError('Archive contains an unsafe path')
             index=json.loads(archive.read('modrinth.index.json'))
             if index.get('formatVersion')!=1 or index.get('game')!='minecraft': raise RuntimeError('Invalid MRPack metadata')
-            if not index.get('dependencies',{}).get('minecraft') or not any(key!='minecraft' for key in index.get('dependencies',{})): raise RuntimeError('MRPack is missing loader metadata')
+            dependencies=index.get('dependencies',{})
+            if not dependencies.get('minecraft') or not any(key!='minecraft' for key in dependencies): raise RuntimeError('MRPack is missing loader metadata')
             for entry in index.get('files',[]):
                 if not entry.get('path','').startswith('mods/') or not entry.get('hashes') or not entry.get('downloads') or not entry.get('fileSize'): raise RuntimeError('MRPack contains an unresolved file')
     def generate(self,project:Project)->Path:
