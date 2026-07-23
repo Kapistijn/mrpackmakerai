@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-
 DUPLICATE_CONSTRAINT = "deduplicate by project identity, slug, name, file and hashes"
 CONTENT_INTENT_CONSTRAINTS = {
     "bosses": "prefer content with bosses when compatible",
@@ -16,7 +15,15 @@ CONTENT_INTENT_CONSTRAINTS = {
     "immersive": "prefer immersion and atmosphere over raw popularity",
     "psychological": "prefer psychological horror and atmosphere when compatible",
 }
-_CONTENT_ALIASES = {"bosses": ("boss", "bosses", "bazen"), "monsters": ("monster", "monsters", "monsters"), "zombies": ("zombie", "zombies"), "automation": ("automation", "automatisering"), "questing": ("quest", "quests", "questing"), "immersive": ("immersive", "immersion", "immersie"), "psychological": ("psychological", "psychologisch")}
+_CONTENT_ALIASES = {
+    "bosses": (r"\bboss(?:es)?\b", r"\bbazen\b"),
+    "monsters": (r"\bmonster(?:s)?\b",),
+    "zombies": (r"\bzombie(?:s)?\b",),
+    "automation": (r"\bautomation\b", r"\bautomatisering\b"),
+    "questing": (r"\bquest(?:s|ing)?\b",),
+    "immersive": (r"\bimmers(?:ive|ion)\b", r"\bimmersie\b"),
+    "psychological": (r"\bpsychological\b", r"\bpsychologisch\b"),
+}
 
 
 @dataclass(frozen=True)
@@ -56,16 +63,14 @@ def _contains(text: str, term: str) -> bool:
 
 
 def _content_signals(text: str) -> set[str]:
-    """Map natural-language singular/plural and Dutch aliases to stable keys."""
     normalized = (text or "").casefold()
-    return {key for key, aliases in _CONTENT_ALIASES.items() if any(_contains(normalized, alias) for alias in aliases)}
+    return {key for key, patterns in _CONTENT_ALIASES.items() if any(re.search(pattern, normalized, re.I) for pattern in patterns)}
 
 
 def extract_intent(prompt: str) -> IntentProfile:
     text = (prompt or "").strip().casefold()
     themes = tuple(term for term in _THEME_TERMS if _contains(text, term))
-    styles = tuple(term for term in _STYLE_TERMS if _contains(text, term))
-    styles = tuple(dict.fromkeys((*styles, *_content_signals(text))))
+    styles = tuple(dict.fromkeys((*[term for term in _STYLE_TERMS if _contains(text, term)], *_content_signals(text))))
     forbidden: list[str] = []
     if re.search(r"no magic|geen magie", text): forbidden.append("magic")
     if re.search(r"no technology|geen technologie", text): forbidden.append("technology")
@@ -102,8 +107,8 @@ def optimize_prompt(prompt: str, *, minecraft_version: str, loader: str, theme: 
     if intent.maximum_mods is not None: constraints.append(f"never exceed {intent.maximum_mods} total mods")
     if intent.forbidden_features: constraints.append(f"avoid: {', '.join(intent.forbidden_features)}")
     if intent.multiplayer: constraints.append("prefer multiplayer and server-compatible content")
-    content_signals = set(intent.gameplay_styles) | _content_signals(original)
-    constraints.extend(CONTENT_INTENT_CONSTRAINTS[item] for item in CONTENT_INTENT_CONSTRAINTS if item in content_signals)
+    content_signals = _content_signals(original)
+    constraints.extend(CONTENT_INTENT_CONSTRAINTS[item] for item in CONTENT_INTENT_CONSTRAINTS if item in content_signals or item in intent.gameplay_styles)
     constraints.extend(f"intent: {item}" for item in intent.themes + intent.gameplay_styles)
     constraints.extend(f"resolve ambiguity: {error}" for error in errors)
     priorities = tuple(dict.fromkeys((performance_preference, "compatibility", "stability", "user intent")))
