@@ -37,6 +37,30 @@ def test_forge_maven_resolves_472():
     run(exercise())
 
 
+def test_neoforge_maven_uses_official_source():
+    async def exercise():
+        async def fetch(url):
+            assert 'maven.neoforged.net' in url
+            return '<metadata><versioning><versions><version>20.4.237</version><version>20.4.200</version></versions></versioning></metadata>'
+
+        result = await OfficialLoaderResolver(fetch).resolve(LoaderType.NEOFORGE, '1.20.4')
+        assert result.version == '20.4.237'
+        assert result.source == 'neoforge-maven'
+
+    run(exercise())
+
+
+def test_empty_metadata_is_a_typed_resolution_error():
+    async def exercise():
+        async def fetch(url):
+            return '<metadata><versioning><versions /></versioning></metadata>'
+
+        with pytest.raises(LoaderMetadataError, match='No forge version found'):
+            await OfficialLoaderResolver(fetch).resolve(LoaderType.FORGE, '1.20.1')
+
+    run(exercise())
+
+
 def test_incompatible_requested_version_is_rejected():
     async def exercise():
         async def fetch(url):
