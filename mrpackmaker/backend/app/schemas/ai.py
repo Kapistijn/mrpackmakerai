@@ -2,7 +2,33 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, model_validator
+
+
+class RequirementAnalysisSchema(BaseModel):
+    theme: str | None = None
+    gameplay_style: list[str] = Field(default_factory=list)
+    difficulty: str | None = None
+    target_mod_count: int | None = Field(default=None, ge=1, le=300)
+    qol_level: Literal["none", "normal", "high", "maximum"] | None = None
+    performance_target: str | None = None
+    shader_support: str | None = None
+    ram_target_mb: int | None = Field(default=None, gt=0)
+    fps_target: int | None = Field(default=None, gt=0)
+    required_mods: list[str] = Field(default_factory=list)
+    forbidden_mods: list[str] = Field(default_factory=list)
+    confidence: Literal["understood", "uncertain", "missing_information"]
+    missing_information: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def missing_information_requires_uncertainty(self):
+        if self.missing_information and self.confidence == "understood":
+            raise ValueError("missing_information requires uncertain or missing_information confidence")
+        if self.confidence == "missing_information" and not self.missing_information:
+            raise ValueError("missing_information confidence requires missing_information")
+        return self
 
 
 class GameplayAnalysis(BaseModel):
@@ -14,7 +40,7 @@ class GameplayAnalysis(BaseModel):
 class CategoryPlan(BaseModel):
     categories: list[str] = Field(default_factory=list)
     search_queries: list[str] = Field(default_factory=list)
-    target_mod_count: int = 40
+    target_mod_count: int = Field(default=40, ge=1, le=300)
 
 
 class ModCandidate(BaseModel):
