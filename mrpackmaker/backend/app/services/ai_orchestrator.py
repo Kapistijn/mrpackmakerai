@@ -11,7 +11,7 @@ from app.models.project import Project
 from app.schemas.ai import AIProgressEvent,CategoryPlan,GameplayAnalysis,IntentAnalysisSchema,RequirementAnalysisSchema
 from app.services.ai_provider import AIProviderError,create_ai_provider
 from app.services.curseforge import CurseForgeClient
-from app.services.discovery_strategy import build_discovery_plan
+from app.services.discovery_strategy import DiscoveryPlan,build_discovery_plan
 from app.services.intent_analysis import analyze_intent,merge_ai_intent
 from app.services.mod_resolver import ModResolver,mod_identity
 from app.services.pack_assets import ensure_shader_loader,shader_loader_queries,is_shader_loader
@@ -36,7 +36,18 @@ class AIOrchestrator:
   if queue:=self._events.get(pid):await queue.put(event)
   if event.status in TERMINAL_STATUSES:self._final[pid]=event
   if run is not None:run.event_log_json=json.dumps([*json.loads(run.event_log_json or '[]'),event.model_dump(mode='json')])
- async def _gather_candidates(self,registry,queries,mc,loader,requirements,plan):
+ async def _gather_candidates(self, registry, resolver_or_queries, queries_or_mc, mc_or_loader, loader_or_requirements=None, requirements=None, plan=None):
+  """Gather candidates with the old beta13 call shape still supported.
+
+  Legacy callers pass (registry, resolver, queries, mc, loader); the current
+  pipeline passes (registry, queries, mc, loader, requirements, plan). The
+  resolver was never needed by this stage, so it remains accepted for API
+  compatibility without changing the new pipeline.
+  """
+  if isinstance(resolver_or_queries, (list, tuple)):
+   queries=list(resolver_or_queries);mc=queries_or_mc;loader=mc_or_loader;requirements=loader_or_requirements or parse_requirements('');plan=plan or build_discovery_plan(50,'medium')
+  else:
+   queries=list(queries_or_mc);mc=mc_or_loader;loader=loader_or_requirements;requirements=requirements or parse_requirements('');plan=plan or build_discovery_plan(50,'medium')
   candidates={};search_queries=queries if plan.include_queries else queries[:4]
   for query in list(dict.fromkeys([*search_queries,''])):
    for offset in plan.offsets:
