@@ -7,6 +7,15 @@ from dataclasses import dataclass
 
 
 DUPLICATE_CONSTRAINT = "deduplicate by project identity, slug, name, file and hashes"
+CONTENT_INTENT_CONSTRAINTS = {
+    "bosses": "prefer content with bosses when compatible",
+    "monsters": "prefer new hostile mobs when compatible",
+    "zombies": "prefer zombie and undead content when compatible",
+    "automation": "prefer automation and progression content when compatible",
+    "questing": "prefer structured quests and progression when compatible",
+    "immersive": "prefer immersion and atmosphere over raw popularity",
+    "psychological": "prefer psychological horror and atmosphere when compatible",
+}
 
 
 @dataclass(frozen=True)
@@ -97,6 +106,7 @@ def optimize_prompt(prompt: str, *, minecraft_version: str, loader: str, theme: 
     if intent.maximum_mods is not None: constraints.append(f"never exceed {intent.maximum_mods} total mods")
     if intent.forbidden_features: constraints.append(f"avoid: {', '.join(intent.forbidden_features)}")
     if intent.multiplayer: constraints.append("prefer multiplayer and server-compatible content")
+    constraints.extend(CONTENT_INTENT_CONSTRAINTS[item] for item in intent.gameplay_styles if item in CONTENT_INTENT_CONSTRAINTS)
     constraints.extend(f"intent: {item}" for item in intent.themes + intent.gameplay_styles)
     constraints.extend(f"resolve ambiguity: {error}" for error in errors)
     priorities = tuple(dict.fromkeys((performance_preference, "compatibility", "stability", "user intent")))
