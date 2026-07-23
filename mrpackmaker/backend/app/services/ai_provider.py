@@ -83,11 +83,14 @@ class OpenAICompatibleProvider:
         return sorted(ids, key=lambda value: ("instruct" not in value.lower(), value.casefold()))
 
     async def get_model(self) -> str:
-        models = await self.list_models()
+        # An explicit model is an intentional provider contract. Do not perform
+        # a discovery request first: local Ollama/LM Studio test doubles and
+        # some gateways expose completions but not /models. Connection health
+        # still performs discovery separately when the UI explicitly requests
+        # a health/model check.
         if self._model:
-            if not models or self._model in models:
-                return self._model
-            logger.warning("Configured model %s is unavailable; selecting a discovered model", self._model)
+            return self._model
+        models = await self.list_models()
         if not models:
             raise AIProviderError(f"{self.provider_id} did not expose a loaded model")
         self._model = models[0]
