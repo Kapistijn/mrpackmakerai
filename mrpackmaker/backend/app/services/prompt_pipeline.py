@@ -16,6 +16,7 @@ CONTENT_INTENT_CONSTRAINTS = {
     "immersive": "prefer immersion and atmosphere over raw popularity",
     "psychological": "prefer psychological horror and atmosphere when compatible",
 }
+_CONTENT_ALIASES = {"bosses": ("boss", "bosses", "bazen"), "monsters": ("monster", "monsters", "monsters"), "zombies": ("zombie", "zombies"), "automation": ("automation", "automatisering"), "questing": ("quest", "quests", "questing"), "immersive": ("immersive", "immersion", "immersie"), "psychological": ("psychological", "psychologisch")}
 
 
 @dataclass(frozen=True)
@@ -54,10 +55,17 @@ def _contains(text: str, term: str) -> bool:
     return re.search(rf"(?<![a-z]){re.escape(term)}(?![a-z])", text, re.I) is not None
 
 
+def _content_signals(text: str) -> set[str]:
+    """Map natural-language singular/plural and Dutch aliases to stable keys."""
+    normalized = (text or "").casefold()
+    return {key for key, aliases in _CONTENT_ALIASES.items() if any(_contains(normalized, alias) for alias in aliases)}
+
+
 def extract_intent(prompt: str) -> IntentProfile:
     text = (prompt or "").strip().casefold()
     themes = tuple(term for term in _THEME_TERMS if _contains(text, term))
     styles = tuple(term for term in _STYLE_TERMS if _contains(text, term))
+    styles = tuple(dict.fromkeys((*styles, *_content_signals(text))))
     forbidden: list[str] = []
     if re.search(r"no magic|geen magie", text): forbidden.append("magic")
     if re.search(r"no technology|geen technologie", text): forbidden.append("technology")
@@ -72,19 +80,15 @@ def extract_intent(prompt: str) -> IntentProfile:
 def _number_near(text: str, markers: tuple[str, ...]) -> int | None:
     for marker in markers:
         match = re.search(rf"{re.escape(marker)}\s+(\d+)", text, re.I)
-        if match:
-            return int(match.group(1))
+        if match: return int(match.group(1))
     return None
 
 
 def validate_intent(intent: IntentProfile) -> list[str]:
     errors: list[str] = []
-    if intent.minimum_mods is not None and intent.maximum_mods is not None and intent.minimum_mods > intent.maximum_mods:
-        errors.append("minimum mod count cannot exceed maximum mod count")
-    if intent.maximum_mods is not None and intent.maximum_mods > 250:
-        errors.append("maximum mod count exceeds the safe export limit of 250")
-    if len(intent.themes) > 3:
-        errors.append("too many competing themes; choose at most three")
+    if intent.minimum_mods is not None and intent.maximum_mods is not None and intent.minimum_mods > intent.maximum_mods: errors.append("minimum mod count cannot exceed maximum mod count")
+    if intent.maximum_mods is not None and intent.maximum_mods > 250: errors.append("maximum mod count exceeds the safe export limit of 250")
+    if len(intent.themes) > 3: errors.append("too many competing themes; choose at most three")
     return errors
 
 
@@ -93,30 +97,16 @@ def optimize_prompt(prompt: str, *, minecraft_version: str, loader: str, theme: 
     request = original or f"Create a {theme} Minecraft modpack."
     intent = extract_intent(original)
     errors = validate_intent(intent)
-    constraints: list[str] = [
-        f"Minecraft {minecraft_version} with {loader} only",
-        "use stable compatible releases where available",
-        "resolve required dependencies transitively without cycles",
-        "compare Modrinth and CurseForge without duplicate projects",
-        DUPLICATE_CONSTRAINT,
-        "reject incompatible, missing-file or unsafe-download entries",
-        f"target {difficulty} gameplay and a {performance_preference} profile",
-    ]
+    constraints: list[str] = [f"Minecraft {minecraft_version} with {loader} only", "use stable compatible releases where available", "resolve required dependencies transitively without cycles", "compare Modrinth and CurseForge without duplicate projects", DUPLICATE_CONSTRAINT, "reject incompatible, missing-file or unsafe-download entries", f"target {difficulty} gameplay and a {performance_preference} profile"]
     if intent.minimum_mods is not None: constraints.append(f"select at least {intent.minimum_mods} compatible mods")
     if intent.maximum_mods is not None: constraints.append(f"never exceed {intent.maximum_mods} total mods")
     if intent.forbidden_features: constraints.append(f"avoid: {', '.join(intent.forbidden_features)}")
     if intent.multiplayer: constraints.append("prefer multiplayer and server-compatible content")
-    # Derive from both the parsed profile and the raw prompt. The second path
-    # makes the contract robust to a future parser that normalizes or filters a
-    # term while the user's explicit content requirement is still present.
-    raw_content_signals = {term for term in CONTENT_INTENT_CONSTRAINTS if _contains(original.casefold(), term)}
-    content_signals = set(intent.gameplay_styles) | raw_content_signals
+    content_signals = set(intent.gameplay_styles) | _content_signals(original)
     constraints.extend(CONTENT_INTENT_CONSTRAINTS[item] for item in CONTENT_INTENT_CONSTRAINTS if item in content_signals)
     constraints.extend(f"intent: {item}" for item in intent.themes + intent.gameplay_styles)
     constraints.extend(f"resolve ambiguity: {error}" for error in errors)
     priorities = tuple(dict.fromkeys((performance_preference, "compatibility", "stability", "user intent")))
     normalized = f"Create a {theme} Minecraft modpack for Minecraft {minecraft_version} ({loader}). Interpret the user's intent as: {request}"
-    system = ("You are a senior Minecraft modpack architect. The original user text is unavailable to you. "
-              "Select complete stable compatible projects, never invent IDs, use only supplied candidates, "
-              "preserve version and loader, deduplicate sources, resolve required dependencies, and explain trade-offs.")
+    system = "You are a senior Minecraft modpack architect. The original user text is unavailable to you. Select complete stable compatible projects, never invent IDs, use only supplied candidates, preserve version and loader, deduplicate sources, resolve required dependencies, and explain trade-offs."
     return PromptBrief(original, normalized, system, tuple(dict.fromkeys(constraints)), priorities, intent)
