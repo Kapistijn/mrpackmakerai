@@ -24,28 +24,43 @@ LOADER_MAP = {
 }
 
 
+def _newest(files: list[dict[str, Any]]) -> dict[str, Any]:
+    # Newest first by ISO fileDate; empty dates sort last.
+    return sorted(files, key=lambda f: f.get("fileDate", ""), reverse=True)[0]
+
+
 def _pick_best_file(
     files: list[dict[str, Any]], mc_version: str, loader: LoaderType
 ) -> dict[str, Any] | None:
     """Choose the newest file that actually matches the MC version AND loader.
 
     CurseForge's ``gameVersion``/``modLoaderType`` query is a coarse pre-filter,
-    so ``files[0]`` can still be a wrong-loader or older build. Selecting on the
-    file's own ``gameVersions`` list prevents shipping an incompatible jar.
+    so ``files[0]`` can still be a wrong-loader or older build. We select in
+    tiers so the most precise match always wins:
+
+    1. Files whose own ``gameVersions`` list contains both the MC version and
+       the loader name (the ideal, unambiguous match).
+    2. Failing that, files that at least match the MC version -- this avoids
+       shipping a jar built for a different Minecraft version just because its
+       loader label was missing from the list.
+    3. Only as a last resort do we trust the API's coarse pre-filter and take
+       the newest returned file.
     """
     if not files:
         return None
     loader_name = loader.value.lower()
     mc = mc_version.lower()
 
-    def matches(file_data: dict[str, Any]) -> bool:
-        versions = [str(v).lower() for v in file_data.get("gameVersions", [])]
-        return mc in versions and loader_name in versions
+    def versions_of(file_data: dict[str, Any]) -> list[str]:
+        return [str(v).lower() for v in file_data.get("gameVersions", [])]
 
-    candidates = [f for f in files if matches(f)]
-    pool = candidates or files
-    # Newest first by ISO fileDate; empty dates sort last.
-    return sorted(pool, key=lambda f: f.get("fileDate", ""), reverse=True)[0]
+    exact = [f for f in files if mc in versions_of(f) and loader_name in versions_of(f)]
+    if exact:
+        return _newest(exact)
+    version_only = [f for f in files if mc in versions_of(f)]
+    if version_only:
+        return _newest(version_only)
+    return _newest(files)
 
 
 class CurseForgeClient:
