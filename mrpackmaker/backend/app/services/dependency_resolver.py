@@ -10,15 +10,13 @@ REQUIRED = "required"
 OPTIONAL = "optional"
 EMBEDDED = "embedded"
 INCOMPATIBLE = "incompatible"
-_METADATA_CACHE: dict[tuple[str, str, str, str], ModEntry | None] = {}
 
 @dataclass(frozen=True)
 class DependencyFailure:
     parent: str
     dependency: str
     reason: str
-    def message(self) -> str:
-        return f"Dependency resolution failed: Mod: {self.parent}; Missing: {self.dependency}; Reason: {self.reason}"
+    def message(self) -> str: return f"Dependency resolution failed: Mod: {self.parent}; Missing: {self.dependency}; Reason: {self.reason}"
 
 @dataclass(frozen=True)
 class DependencyResolution:
@@ -30,17 +28,17 @@ class DependencyResolution:
     def complete(self) -> bool: return not self.failures
 
 class DependencyResolver:
-    """Resolve a compatible dependency closure with bounded, cached passes."""
+    """Resolve a compatible dependency closure with bounded, instance-scoped caching."""
     def __init__(self, resolver: ModResolver, *, max_passes: int = 5) -> None:
         if max_passes < 1: raise ValueError("max_passes must be positive")
-        self._resolver = resolver; self._max_passes = max_passes
+        self._resolver = resolver; self._max_passes = max_passes; self._metadata_cache: dict[tuple[str, str, str, str], ModEntry | None] = {}
 
     async def _lookup(self, source: str, project_id: str, mc: str, loader: LoaderType) -> ModEntry | None:
         key = (source.strip().lower(), project_id.strip(), mc.strip(), loader.value)
-        if key not in _METADATA_CACHE:
-            try: _METADATA_CACHE[key] = await self._resolver.resolve_mod(source, project_id, mc, loader)
-            except UnknownModSourceError: _METADATA_CACHE[key] = None
-        return _METADATA_CACHE[key]
+        if key not in self._metadata_cache:
+            try: self._metadata_cache[key] = await self._resolver.resolve_mod(source, project_id, mc, loader)
+            except UnknownModSourceError: self._metadata_cache[key] = None
+        return self._metadata_cache[key]
 
     @staticmethod
     def _key(mod: ModEntry) -> str: return f"{mod.source}:{mod.id}"
