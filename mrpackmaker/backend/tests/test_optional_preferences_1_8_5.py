@@ -6,9 +6,12 @@ from app.services.mod_resolver import ModResolver
 from app.services.requirements import parse_requirements
 from app.services.source_registry import ModSourceRegistry
 
-def test_plain_prompt_leaves_advanced_preferences_unset():
+def test_plain_prompt_parses_mod_count_but_leaves_advanced_preferences_unset():
     requirements=parse_requirements('Maak een horror modpack met 150 mods',theme='horror')
-    assert requirements.minimum_mods is None and requirements.target_ram_gb is None and requirements.target_fps is None
+    assert requirements.minimum_mods == 150
+    assert requirements.target_ram_gb is None and requirements.target_fps is None
+    assert requirements.shader_support is None and requirements.performance_preference is None
+    assert requirements.hardware_profile is None and requirements.visual_quality is None
 
 def test_optional_preferences_are_parsed_when_present():
     requirements=parse_requirements('{"advanced":{"target_ram_gb":8,"target_fps":60,"shader_support":"shader_compatible","performance_preference":"performance"}}')
