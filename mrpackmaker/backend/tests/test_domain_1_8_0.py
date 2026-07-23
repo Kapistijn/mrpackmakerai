@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app.domain.common import CompatibilityStatus, Environment, FrozenMap, Loader, ModSource
+from app.domain.common import CompatibilityStatus, Environment, FrozenMap, Loader, ModSource, to_json_safe
 from app.domain.compatibility.models import CompatibilityIssue, CompatibilityReport, MeasuredMetrics
 from app.domain.mods.models import CanonicalModIdentity, ModCandidate, ModFile
 from app.domain.providers.protocols import DependencyResolutionResult, DependencyResolver, ModCatalogProvider, SelectionResult
@@ -29,6 +29,20 @@ def test_frozen_map_recursively_freezes_and_copies_input() -> None:
     assert hash(frozen) is not None
     with pytest.raises(TypeError):
         frozen["nested"]["values"][1]["tags"] = frozenset()
+
+
+def test_set_serialization_is_deterministic() -> None:
+    first = to_json_safe({"b", "a", "10"})
+    second = to_json_safe(set(["10", "a", "b"]))
+    frozen = to_json_safe(frozenset({"b", "a", "10"}))
+    assert first == second == frozen == ["10", "a", "b"]
+
+
+def test_nested_set_serialization_is_deterministic() -> None:
+    first = FrozenMap.from_mapping({"nested": {"z", "x", "y"}})
+    second = FrozenMap.from_mapping({"nested": set(["y", "z", "x"])})
+    assert json.dumps(to_json_safe(first), sort_keys=True) == json.dumps(to_json_safe(second), sort_keys=True)
+    assert to_json_safe(first)["nested"] == ["x", "y", "z"]
 
 
 def test_all_value_objects_are_hashable() -> None:

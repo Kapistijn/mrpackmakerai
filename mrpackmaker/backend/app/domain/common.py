@@ -24,14 +24,23 @@ def freeze(value: T) -> T:
 
 
 def to_json_safe(value: Any) -> Any:
-    """Convert domain values recursively to JSON-compatible primitives."""
+    """Convert domain values recursively to JSON-compatible primitives.
+
+    Sets and frozensets are recursively converted and then sorted by
+    ``(type(item).__name__, repr(item))``. This gives deterministic output
+    without relying on object or hash iteration order, including for mixed
+    JSON-safe item types.
+    """
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, FrozenMap):
         return {str(key): to_json_safe(item) for key, item in value.items()}
     if isinstance(value, Mapping):
         return {str(key): to_json_safe(item) for key, item in value.items()}
-    if isinstance(value, (tuple, list, frozenset, set)):
+    if isinstance(value, (set, frozenset)):
+        converted = [to_json_safe(item) for item in value]
+        return sorted(converted, key=lambda item: (type(item).__name__, repr(item)))
+    if isinstance(value, (tuple, list)):
         return [to_json_safe(item) for item in value]
     if hasattr(value, "to_dict"):
         return to_json_safe(value.to_dict())
