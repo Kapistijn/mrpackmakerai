@@ -29,9 +29,23 @@ class ModrinthAdapter:
             raise InvalidResponseError(f"Unsupported Modrinth loader: {loader.value}") from exc
 
     @staticmethod
-    def _candidate(entry: ModEntry) -> ModCandidate:
+    def _file(entry: ModEntry) -> ModFile:
+        if not entry.file_name or not entry.download_url or not entry.hashes.sha512:
+            raise InvalidResponseError("Modrinth response is missing file name, URL, or sha512")
+        return ModFile(
+            filename=entry.file_name,
+            url=entry.download_url,
+            sha512=entry.hashes.sha512,
+            size_bytes=entry.file_size or 0,
+            minecraft_versions=frozenset({entry.selected_version or ""}) - {""},
+            loaders=frozenset(entry.loaders),
+        )
+
+    @staticmethod
+    def _candidate(entry: ModEntry, *, require_file: bool = False) -> ModCandidate:
         if not entry.id or not entry.name:
             raise InvalidResponseError("Modrinth response is missing id or name")
+        files = (ModrinthAdapter._file(entry),) if require_file or entry.file_name else ()
         identity = CanonicalModIdentity(
             canonical_key=f"modrinth:{entry.id}",
             display_name=entry.name,
@@ -47,22 +61,9 @@ class ModrinthAdapter:
             description=entry.summary,
             downloads=entry.downloads,
             categories=frozenset(entry.categories),
-            files=tuple([ModrinthAdapter._file(entry)] if entry.file_name else ()),
+            files=files,
             client_side=Environment.UNKNOWN,
             server_side=Environment.UNKNOWN,
-        )
-
-    @staticmethod
-    def _file(entry: ModEntry) -> ModFile:
-        if not entry.file_name or not entry.download_url or not entry.hashes.sha512:
-            raise InvalidResponseError("Modrinth response is missing file name, URL, or sha512")
-        return ModFile(
-            filename=entry.file_name,
-            url=entry.download_url,
-            sha512=entry.hashes.sha512,
-            size_bytes=entry.file_size or 0,
-            minecraft_versions=frozenset({entry.selected_version or ""}) - {""},
-            loaders=frozenset(entry.loaders),
         )
 
     async def search(self, query: str, *, minecraft_version: str, loader: Loader, limit: int = 50, offset: int = 0) -> tuple[ModCandidate, ...]:
@@ -71,7 +72,4 @@ class ModrinthAdapter:
 
     async def get(self, project_id: str) -> ModCandidate | None:
         entry = await self._client.get_mod_detail(project_id, self._minecraft_version, self._loader_type(self._loader))
-        return self._candidate(entry) if entry is not None else None
-
-
-assert isinstance(ModrinthAdapter, type) and issubclass(ModrinthAdapter, object)
+        return self._candidate(entry, require_file=True) if entry is not None else None

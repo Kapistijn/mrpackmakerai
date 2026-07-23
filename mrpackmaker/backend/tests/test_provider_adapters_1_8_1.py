@@ -82,6 +82,19 @@ def test_missing_catalog_fields_raise_typed_error():
     run(exercise())
 
 
+def test_curseforge_missing_catalog_fields_raise_typed_error():
+    async def exercise():
+        class Missing:
+            async def get_mod_detail(self, *args):
+                return entry(detailed=False)
+
+        adapter = CurseForgeAdapter(Missing(), "1.20.1", Loader.FABRIC)
+        with pytest.raises(InvalidResponseError):
+            await adapter.get("abc")
+
+    run(exercise())
+
+
 class FakeAI:
     provider_id = "test-provider"
 

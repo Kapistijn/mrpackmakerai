@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.domain.common import CompatibilityStatus, Loader, to_json_safe
+from app.domain.loader import LoaderSelection
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,7 @@ class CompatibilityReport:
     issues: tuple[CompatibilityIssue, ...] = ()
     metrics: MeasuredMetrics = field(default_factory=MeasuredMetrics)
     evaluated: bool = False
+    loader_selection: LoaderSelection | None = None
 
     def __post_init__(self) -> None:
         if not self.minecraft_version.strip():
@@ -51,6 +53,11 @@ class CompatibilityReport:
         if not isinstance(self.loader, Loader):
             object.__setattr__(self, "loader", Loader.from_str(str(self.loader)))
         object.__setattr__(self, "issues", tuple(self.issues))
+        if self.loader_selection is not None:
+            if self.loader_selection.loader is not self.loader or self.loader_selection.minecraft_version != self.minecraft_version:
+                raise ValueError("loader_selection must match report loader and Minecraft version")
+            if self.loader_version is not None and self.loader_selection.loader_version != self.loader_version:
+                raise ValueError("loader versions must come from one selection")
 
     @property
     def status(self) -> CompatibilityStatus:
@@ -63,7 +70,7 @@ class CompatibilityReport:
         return self.evaluated and self.status is not CompatibilityStatus.INCOMPATIBLE
 
     def with_issue(self, issue: CompatibilityIssue) -> "CompatibilityReport":
-        return CompatibilityReport(self.minecraft_version, self.loader, self.loader_version, (*self.issues, issue), self.metrics, self.evaluated)
+        return CompatibilityReport(self.minecraft_version, self.loader, self.loader_version, (*self.issues, issue), self.metrics, self.evaluated, self.loader_selection)
 
     def to_dict(self) -> dict[str, object]:
-        return to_json_safe({"minecraft_version": self.minecraft_version, "loader": self.loader, "loader_version": self.loader_version, "issues": self.issues, "metrics": self.metrics, "evaluated": self.evaluated, "status": self.status})
+        return to_json_safe({"minecraft_version": self.minecraft_version, "loader": self.loader, "loader_version": self.loader_version, "issues": self.issues, "metrics": self.metrics, "evaluated": self.evaluated, "status": self.status, "loader_selection": self.loader_selection})
