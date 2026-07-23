@@ -17,6 +17,26 @@ from app.services.ai_provider import create_ai_provider
 router = APIRouter()
 
 
+async def _begin_generation(
+    project: Project, db: AsyncSession, *, use_ai: bool
+) -> None:
+    """Mark the project generating and hand off to the orchestrator.
+
+    The status is only allowed to remain GENERATING if the background job was
+    actually started. If the orchestrator refuses (for example a concurrent
+    request already claimed the project), the status is rolled back so the
+    project does not get wedged in GENERATING until the next server restart.
+    """
+    project.status = ProjectStatus.GENERATING.value
+    await db.commit()
+    try:
+        orchestrator.start_generation(project.id, use_ai=use_ai)
+    except RuntimeError as exc:
+        project.status = ProjectStatus.DRAFT.value
+        await db.commit()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.post("/generate/{project_id}")
 async def start_generation(project_id: int, db: AsyncSession = Depends(get_db)):
     project = await db.get(Project, project_id)
@@ -40,10 +60,7 @@ async def start_generation(project_id: int, db: AsyncSession = Depends(get_db)):
             ),
         )
 
-    project.status = ProjectStatus.GENERATING.value
-    await db.commit()
-    orchestrator.start_generation(project_id, use_ai=True)
-
+    await _begin_generation(project, db, use_ai=True)
     return {"status": "started", "project_id": project_id, "mode": "ai"}
 
 
@@ -62,10 +79,7 @@ async def start_quick_generation(project_id: int, db: AsyncSession = Depends(get
     if project.status == ProjectStatus.GENERATING.value or orchestrator.is_active(project_id):
         raise HTTPException(status_code=409, detail="Generation already in progress")
 
-    project.status = ProjectStatus.GENERATING.value
-    await db.commit()
-    orchestrator.start_generation(project_id, use_ai=False)
-
+    await _begin_generation(project, db, use_ai=False)
     return {"status": "started", "project_id": project_id, "mode": "quick"}
 
 

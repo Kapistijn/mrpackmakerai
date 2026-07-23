@@ -35,25 +35,22 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MrPackMaker",
     description="AI Minecraft Modpack Generator",
-    version="1.6.0-beta.1",
+    version="1.6.2",
     lifespan=lifespan,
 )
 
-try:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "http://localhost:8000",
-            "http://127.0.0.1:8000",
-        ],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-except Exception:
-    logger.exception("Error adding CORS middleware")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.exception_handler(Exception)
@@ -68,16 +65,17 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-try:
-    app.include_router(health.router, prefix="/api", tags=["health"])
-    app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
-    app.include_router(mods.router, prefix="/api/mods", tags=["mods"])
-    app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
-    app.include_router(compatibility.router, prefix="/api/compatibility", tags=["compatibility"])
-    app.include_router(modpack.router, prefix="/api/modpack", tags=["modpack"])
-    app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
-except Exception:
-    logger.exception("Error including routers")
+# Router registration happens at import time. A failure here must not be
+# swallowed: an app that boots with silently missing routes returns confusing
+# 404s for real endpoints. Let the error propagate so a broken build is caught
+# immediately at startup instead of in production.
+app.include_router(health.router, prefix="/api", tags=["health"])
+app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
+app.include_router(mods.router, prefix="/api/mods", tags=["mods"])
+app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
+app.include_router(compatibility.router, prefix="/api/compatibility", tags=["compatibility"])
+app.include_router(modpack.router, prefix="/api/modpack", tags=["modpack"])
+app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 
 # Serve the SPA in production only after every API route has been registered.
 # Static assets use their normal paths and unknown client-side routes fall back
