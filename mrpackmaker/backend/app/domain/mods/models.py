@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from types import MappingProxyType
 from typing import Mapping
 
 from app.domain.common import Environment, FrozenMap, ModSource
@@ -22,7 +21,11 @@ class CanonicalModIdentity:
         object.__setattr__(self, "canonical_key", self.canonical_key.strip().lower())
         object.__setattr__(self, "aliases", frozenset(str(x).strip().lower() for x in self.aliases))
         object.__setattr__(self, "authors", frozenset(str(x).strip().lower() for x in self.authors))
-        object.__setattr__(self, "sources", FrozenMap.from_mapping({str(k): str(v) for k, v in self.sources.items()}))
+        normalized_sources = {
+            (key.value if isinstance(key, ModSource) else str(key)): str(value)
+            for key, value in self.sources.items()
+        }
+        object.__setattr__(self, "sources", FrozenMap.from_mapping(normalized_sources))
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, CanonicalModIdentity) and self.canonical_key == other.canonical_key
@@ -31,10 +34,21 @@ class CanonicalModIdentity:
         return hash(self.canonical_key)
 
     def matches(self, other: "CanonicalModIdentity") -> bool:
-        return self.canonical_key == other.canonical_key or bool(self.aliases & ({other.canonical_key} | other.aliases)) or any(src in other.sources and other.sources[src] == project_id for src, project_id in self.sources.items())
+        return (
+            self.canonical_key == other.canonical_key
+            or bool(self.aliases & ({other.canonical_key} | other.aliases))
+            or any(src in other.sources and other.sources[src] == project_id for src, project_id in self.sources.items())
+        )
 
     def to_dict(self) -> dict[str, object]:
-        return {"canonical_key": self.canonical_key, "display_name": self.display_name, "sources": self.sources.to_dict(), "aliases": sorted(self.aliases), "authors": sorted(self.authors), "confidence": self.confidence}
+        return {
+            "canonical_key": self.canonical_key,
+            "display_name": self.display_name,
+            "sources": self.sources.to_dict(),
+            "aliases": sorted(self.aliases),
+            "authors": sorted(self.authors),
+            "confidence": self.confidence,
+        }
 
 
 @dataclass(frozen=True)
@@ -56,7 +70,14 @@ class ModFile:
         return minecraft_version in self.minecraft_versions and loader.lower() in self.loaders
 
     def to_dict(self) -> dict[str, object]:
-        return {"filename": self.filename, "url": self.url, "sha512": self.sha512, "size_bytes": self.size_bytes, "minecraft_versions": sorted(self.minecraft_versions), "loaders": sorted(self.loaders)}
+        return {
+            "filename": self.filename,
+            "url": self.url,
+            "sha512": self.sha512,
+            "size_bytes": self.size_bytes,
+            "minecraft_versions": sorted(self.minecraft_versions),
+            "loaders": sorted(self.loaders),
+        }
 
 
 @dataclass(frozen=True, eq=False)
@@ -91,4 +112,16 @@ class ModCandidate:
         return next((item for item in self.files if item.supports(minecraft_version, loader)), None)
 
     def to_dict(self) -> dict[str, object]:
-        return {"identity": self.identity.to_dict(), "source": self.source.value, "project_id": self.project_id, "slug": self.slug, "name": self.name, "description": self.description, "downloads": self.downloads, "categories": sorted(self.categories), "files": [item.to_dict() for item in self.files], "client_side": self.client_side.value, "server_side": self.server_side.value}
+        return {
+            "identity": self.identity.to_dict(),
+            "source": self.source.value,
+            "project_id": self.project_id,
+            "slug": self.slug,
+            "name": self.name,
+            "description": self.description,
+            "downloads": self.downloads,
+            "categories": sorted(self.categories),
+            "files": [item.to_dict() for item in self.files],
+            "client_side": self.client_side.value,
+            "server_side": self.server_side.value,
+        }

@@ -2,9 +2,9 @@ import json
 import pytest
 
 from app.domain.common import CompatibilityStatus, FrozenMap, Loader, ModSource
-from app.domain.compatibility.models import CompatibilityIssue, CompatibilityReport
+from app.domain.compatibility.models import CompatibilityIssue, CompatibilityReport, MeasuredMetrics
 from app.domain.mods.models import CanonicalModIdentity, ModCandidate, ModFile
-from app.domain.providers.protocols import DependencyResolutionResult, ModCatalogProvider
+from app.domain.providers.protocols import DependencyResolutionResult, DependencyResolver, ModCatalogProvider
 from app.domain.requirements.models import GenerationBrief, RequirementProfile
 
 
@@ -21,7 +21,8 @@ def test_all_value_objects_are_hashable():
     profile = RequirementProfile("horror", "1.20.1", Loader.FABRIC, min_mods=1)
     brief = GenerationBrief(profile, "horror", FrozenMap.from_mapping({"horror": 1}), 7)
     report = CompatibilityReport("1.20.1", Loader.FABRIC)
-    assert all(isinstance(hash(value), int) for value in (profile, brief, identity(), candidate(), report))
+    values = (FrozenMap.from_mapping({"x": 1}), profile, brief, identity(), candidate(), MeasuredMetrics(), CompatibilityIssue("WARN", "warning"), report)
+    assert all(isinstance(hash(value), int) for value in values)
 
 
 def test_nested_collections_cannot_be_mutated():
@@ -76,3 +77,10 @@ def test_catalog_protocol_conformance():
         async def search(self, query, *, minecraft_version, loader, limit=50, offset=0): return []
         async def get(self, project_id): return None
     assert isinstance(Catalog(), ModCatalogProvider)
+
+
+def test_dependency_protocol_conformance():
+    class Resolver:
+        async def resolve(self, selected, *, minecraft_version, loader):
+            return DependencyResolutionResult(success=True)
+    assert isinstance(Resolver(), DependencyResolver)
