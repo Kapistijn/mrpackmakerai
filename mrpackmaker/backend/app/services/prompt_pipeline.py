@@ -6,6 +6,9 @@ import re
 from dataclasses import dataclass
 
 
+DUPLICATE_CONSTRAINT = "deduplicate by project identity, slug, name, file and hashes"
+
+
 @dataclass(frozen=True)
 class IntentProfile:
     themes: tuple[str, ...]
@@ -86,6 +89,7 @@ def optimize_prompt(prompt: str, *, minecraft_version: str, loader: str, theme: 
         "use stable compatible releases where available",
         "resolve required dependencies transitively without cycles",
         "compare Modrinth and CurseForge without duplicate projects",
+        DUPLICATE_CONSTRAINT,
         "reject incompatible, missing-file or unsafe-download entries",
         f"target {difficulty} gameplay and a {performance_preference} profile",
     ]
