@@ -27,6 +27,20 @@ class LoaderVersion:
 
 
 FetchText = Callable[[str], Awaitable[str]]
+_VERSION_TOKEN = re.compile(r"\d+|[A-Za-z]+")
+
+
+def _version_key(version: str) -> tuple[tuple[int, ...], bool, str]:
+    """Build a deterministic, dependency-free ordering key for loader versions.
+
+    Loader versions are numeric SemVer-like strings in the official sources,
+    sometimes with a qualifier such as ``-beta``. Numeric components are the
+    primary identity; stable releases sort before qualified prereleases.
+    """
+    tokens = _VERSION_TOKEN.findall(version.casefold())
+    numbers = tuple(int(token) for token in tokens if token.isdigit())
+    prerelease = bool(re.search(r"(?:alpha|beta|rc|snapshot|nightly|dev)", version.casefold()))
+    return numbers, not prerelease, version.casefold()
 
 
 class OfficialLoaderResolver:
@@ -79,11 +93,12 @@ class OfficialLoaderResolver:
             data = json.loads(await self._fetch_text(url))
             if not isinstance(data, list):
                 raise ValueError("Fabric metadata must be a list")
-            return tuple(
+            versions = tuple(
                 LoaderVersion(LoaderType.FABRIC, mc, item["loader"]["version"], "fabric-meta", bool(item["loader"].get("stable", False)))
                 for item in data
                 if isinstance(item, dict) and isinstance(item.get("loader"), dict) and item["loader"].get("version")
             )
+            return tuple(sorted(versions, key=lambda item: (_version_key(item.version), item.stable), reverse=True))
         except (ValueError, TypeError, KeyError, json.JSONDecodeError, LoaderMetadataError) as exc:
             raise LoaderMetadataError("Fabric Meta request failed") from exc
 
@@ -97,9 +112,6 @@ class OfficialLoaderResolver:
         )
 
     async def _neoforge(self, mc: str) -> tuple[LoaderVersion, ...]:
-        # NeoForge's official Maven metadata does not encode Minecraft in every
-        # artifact version. The version listing is sourced from the official
-        # repository; compatibility is enforced by the selected project/version.
         return await self._maven_versions(
             LoaderType.NEOFORGE,
             mc,
@@ -119,4 +131,4 @@ class OfficialLoaderResolver:
             match = re.fullmatch(pattern, raw)
             if match:
                 found.append(LoaderVersion(loader, mc, match.group("version"), source, "alpha" not in raw.lower() and "beta" not in raw.lower()))
-        return tuple(reversed(found))
+        return tuple(sorted(found, key=lambda item: (_version_key(item.version), item.stable), reverse=True))
