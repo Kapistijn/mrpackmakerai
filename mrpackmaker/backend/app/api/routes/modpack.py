@@ -14,41 +14,36 @@ from app.services.mod_resolver import ModResolver
 from app.services.mrpack import MrpackGenerator
 from app.services.mrpack_validation import MrpackValidationError
 from app.services.source_registry import create_default_registry
-router = APIRouter()
-
-async def repair_project_dependencies(project: Project, db: AsyncSession) -> dict[str, int]:
-    selected = [ModEntry.model_validate(raw) for raw in json.loads(project.mods_json or "[]")]
-    registry = create_default_registry(); resolver = ModResolver(registry=registry)
+router=APIRouter()
+async def repair_project_dependencies(project: Project, db: AsyncSession) -> dict:
+    selected=[ModEntry.model_validate(raw) for raw in json.loads(project.mods_json or '[]')]; registry=create_default_registry(); resolver=ModResolver(registry=registry)
     try:
-        refreshed = []
+        refreshed=[]
         for item in selected:
-            try: detail = await resolver.resolve_mod(item.source, item.id, project.minecraft_version, LoaderType(project.loader))
-            except Exception: detail = None
+            try: detail=await resolver.resolve_mod(item.source,item.id,project.minecraft_version,LoaderType(project.loader))
+            except Exception: detail=None
             refreshed.append(detail or item)
-        result = await DependencyResolver(resolver).resolve_pack(refreshed, project.minecraft_version, LoaderType(project.loader))
-        if result.failures:
-            raise HTTPException(status_code=422, detail={"message": "Dependency repair failed after 5 passes.", "errors": [failure.message() for failure in result.failures]})
-        repaired = list(result.mods)
-        if len(repaired) != len(selected) or any(a.model_dump() != b.model_dump() for a, b in zip(repaired, selected)):
-            project.mods_json = json.dumps([mod.model_dump(mode="json") for mod in repaired]); project.mrpack_path = None; project.status = ProjectStatus.REVIEW.value; await db.flush()
-        return {"mods": len(repaired), "optional_added": result.optional_added, "passes": result.passes}
+        result=await DependencyResolver(resolver).resolve_pack(refreshed,project.minecraft_version,LoaderType(project.loader))
+        if result.failures: raise HTTPException(status_code=422,detail={'message':'Dependency repair could not complete after 5 passes.','errors':[f.message() for f in result.failures],'events':[e.__dict__ for e in result.events]})
+        repaired=list(result.mods)
+        if len(repaired)!=len(selected) or any(a.model_dump()!=b.model_dump() for a,b in zip(repaired,selected)):
+            project.mods_json=json.dumps([m.model_dump(mode='json') for m in repaired]); project.mrpack_path=None; project.status=ProjectStatus.REVIEW.value; await db.flush()
+        return {'mods':len(repaired),'optional_added':result.optional_added,'passes':result.passes,'events':[e.__dict__ for e in result.events]}
     finally: await resolver.close()
-
-@router.post("/{project_id}/generate")
-async def generate_modpack(project_id: int, db: AsyncSession = Depends(get_db)):
-    project = await db.get(Project, project_id)
-    if not project: raise HTTPException(status_code=404, detail="Project not found")
-    dependency_status = await repair_project_dependencies(project, db)
-    try: output_path = MrpackGenerator().generate(project)
-    except MrpackValidationError as exc: raise HTTPException(status_code=422, detail={"message": "Modpack cannot be exported until validation errors are fixed.", "errors": [issue.message for issue in exc.issues]}) from exc
-    project.mrpack_path = str(output_path); project.status = ProjectStatus.EXPORTED.value; await db.flush()
-    return {"status": "generated", "path": str(output_path), "filename": output_path.name, "dependency_status": dependency_status}
-
-@router.get("/{project_id}/download")
-async def download_modpack(project_id: int, db: AsyncSession = Depends(get_db)):
-    project = await db.get(Project, project_id)
-    if not project: raise HTTPException(status_code=404, detail="Project not found")
-    if not project.mrpack_path: raise HTTPException(status_code=404, detail="No modpack generated yet. Run generate first.")
-    path = Path(project.mrpack_path).resolve(); output_dir = config.output_dir.resolve()
-    if output_dir not in path.parents or not path.exists(): raise HTTPException(status_code=404, detail="Modpack file not found")
-    return FileResponse(path=str(path), filename=path.name, media_type="application/zip")
+@router.post('/{project_id}/generate')
+async def generate_modpack(project_id:int,db:AsyncSession=Depends(get_db)):
+    project=await db.get(Project,project_id)
+    if not project: raise HTTPException(status_code=404,detail='Project not found')
+    status=await repair_project_dependencies(project,db)
+    try: output=MrpackGenerator().generate(project)
+    except MrpackValidationError as exc: raise HTTPException(status_code=422,detail={'message':'Modpack cannot be exported after dependency repair.','errors':[i.message for i in exc.issues],'dependency_status':status}) from exc
+    project.mrpack_path=str(output); project.status=ProjectStatus.EXPORTED.value; await db.flush()
+    return {'status':'generated','path':str(output),'filename':output.name,'dependency_status':status}
+@router.get('/{project_id}/download')
+async def download_modpack(project_id:int,db:AsyncSession=Depends(get_db)):
+    project=await db.get(Project,project_id)
+    if not project: raise HTTPException(status_code=404,detail='Project not found')
+    if not project.mrpack_path: raise HTTPException(status_code=404,detail='No modpack generated yet. Run generate first.')
+    path=Path(project.mrpack_path).resolve(); out=config.output_dir.resolve()
+    if out not in path.parents or not path.exists(): raise HTTPException(status_code=404,detail='Modpack file not found')
+    return FileResponse(path=str(path),filename=path.name,media_type='application/zip')
