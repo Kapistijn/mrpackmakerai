@@ -54,7 +54,8 @@ def parse_requirements(prompt: str, *, theme: str | None = None, minimum_mods: i
     parsed_downloads = _number(text, (r"minimum\s+downloads?", r"min(?:imum)?\s+downloads?", r"downloads?\s*[:=]"))
     effective_min = minimum_mods if minimum_mods is not None else parsed_min
     effective_max = maximum_mods if maximum_mods is not None else parsed_max
-    effective_downloads = minimum_downloads if minimum_downloads is not None else (parsed_downloads or 0)
+    # Zero means "no project override", allowing a prompt-level threshold.
+    effective_downloads = minimum_downloads if minimum_downloads else (parsed_downloads or 0)
     warnings = ("minimum_mods exceeds maximum_mods",) if effective_min and effective_max and effective_min > effective_max else ()
     return Requirements(themes=tuple(dict.fromkeys(detected_themes)), required_features=tuple(dict.fromkeys(required)), forbidden_features=tuple(dict.fromkeys(forbidden)), minimum_mods=effective_min, maximum_mods=effective_max, minimum_downloads=max(0, effective_downloads), multiplayer=bool(re.search(r"multiplayer|server|samen spelen", text)), warnings=warnings)
 
