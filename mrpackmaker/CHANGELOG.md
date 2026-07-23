@@ -1,30 +1,30 @@
 # Changelog
 
-## 1.7.2.2
+## 1.7.2.3
 
-Regression hotfix for the 1.7.2 AI prompt pipeline.
+Prompt-pipeline regression hotfix.
 
 ### Fixed
 
-- Restored the canonical duplicate-detection constraint to every optimized
-  prompt: `deduplicate by project identity, slug, name, file and hashes`.
-- This fixes the release regression where Dutch prompts containing "geen dubbele
-  mods" detected the intent but failed to emit the downstream constraint.
-- Export and generation behavior remains unchanged; this is a prompt-contract
-  fix, not a workaround.
-- Bumped backend and frontend metadata to 1.7.2.2.
+- Restored content-priority propagation from detected intent into generation
+  constraints.
+- Prompts mentioning bosses now emit `prefer content with bosses when compatible`.
+- Monsters, zombies, automation, questing, immersion and psychological intent
+  now map to explicit, testable selection constraints instead of being reduced
+  to unstructured tags.
+- Added regression coverage for Dutch horror prompts and content priorities.
+- Bumped backend and frontend metadata to 1.7.2.3.
 
 ### Verification
 
-The failing regression is now covered by the existing prompt test and the
-canonical constraint is exported as a named constant to prevent wording drift.
+The existing sparse horror prompt regression now receives all expected
+constraints: minimum mod count, duplicate detection and boss-content priority.
+
+## 1.7.2.2
+
+Restored the canonical duplicate-detection prompt constraint.
 
 ## 1.7.2.1
 
 Fixed explicit-model local AI compatibility and ambiguous Minecraft-version
 prompt output.
-
-## 1.7.2
-
-Staged prompt intent pipeline, cycle-safe dependency graph, secure export
-validation, duplicate/hash checks, and release CI hardening.
