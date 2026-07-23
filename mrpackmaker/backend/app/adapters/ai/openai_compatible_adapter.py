@@ -26,7 +26,6 @@ class OpenAICompatibleAdapter:
         self._difficulty = difficulty
         self._performance_preference = performance_preference
 
-    @property
     def name(self) -> str:
         return self._provider.provider_id
 

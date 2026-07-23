@@ -66,7 +66,12 @@ class CandidateSelector(Protocol):
 
 @runtime_checkable
 class AIProvider(RequirementAnalyzer, PromptOptimizer, CandidateSelector, Protocol):
-    @property
+    """Runtime-checkable composition of the three AI capabilities.
+
+    ``name`` is a method rather than a protocol property because Python's
+    runtime_checkable structural checks support method-only protocols reliably.
+    """
+
     def name(self) -> str: ...
 
 
