@@ -74,6 +74,18 @@ class DependencyResolver:
         for key in sorted(by_key): visit(key)
         return tuple(sorted(found))
 
+    def _unresolved_required(self, mods: list[ModEntry]) -> list[tuple[str, str]]:
+        """Required dependency edges whose target is still absent from the pack."""
+        present = {self._key(m) for m in mods}
+        missing: list[tuple[str, str]] = []
+        for parent in mods:
+            for dep in parent.dependencies:
+                if dep.dependency_type.strip().casefold() == REQUIRED:
+                    dep_key = self._dep_key(dep, parent)
+                    if dep_key not in present:
+                        missing.append((self._key(parent), dep_key))
+        return missing
+
     async def resolve_pack(self, selected: list[ModEntry], mc: str, loader: LoaderType, *, include_optional: bool = False) -> DependencyResolution:
         mods = list(ModResolver.deduplicate(selected)); events: list[DependencyEvent] = []; failures: dict[tuple[str,str], DependencyFailure] = {}; optional_added = 0
         for pass_number in range(1, self._max_passes + 1):
@@ -104,4 +116,12 @@ class DependencyResolver:
                 events.append(DependencyEvent(pass_number, 'complete', None, 'repair complete' if not failures else 'no further changes possible'))
                 return DependencyResolution(tuple(mods), tuple(failures.values()), optional_added, pass_number, tuple(events))
         events.append(DependencyEvent(self._max_passes, 'complete', None, 'repair limit reached'))
-        return DependencyResolution(tuple(mods), tuple(failures.values()) or (DependencyFailure('pack', 'dependency graph', f'No stable closure after {self._max_passes} passes'),), optional_added, self._max_passes, tuple(events))
+        remaining = self._unresolved_required(mods)
+        if remaining:
+            detailed = tuple(
+                DependencyFailure(parent, dep, f'still unresolved after {self._max_passes} repair passes', 'confirm a compatible version exists on Modrinth/CurseForge, or remove the parent mod')
+                for parent, dep in remaining
+            )
+        else:
+            detailed = tuple(failures.values())
+        return DependencyResolution(tuple(mods), detailed, optional_added, self._max_passes, tuple(events))

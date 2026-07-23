@@ -63,6 +63,17 @@ def _apply_compatible_migrations(connection) -> None:
         "minimum_mods": "INTEGER NULL",
         "maximum_mods": "INTEGER NULL",
         "minimum_downloads": "INTEGER NOT NULL DEFAULT 0",
+        # 1.8.7 functional advanced configuration
+        "target_ram_gb": "INTEGER NULL",
+        "target_fps": "INTEGER NULL",
+        "shader_support": "VARCHAR(16) NOT NULL DEFAULT 'off'",
+        "shader_quality": "VARCHAR(16) NULL",
+        "resourcepack_support": "BOOLEAN NOT NULL DEFAULT 0",
+        "required_mods_json": "TEXT NOT NULL DEFAULT '[]'",
+        "forbidden_mods_json": "TEXT NOT NULL DEFAULT '[]'",
+        "ai_creativity": "VARCHAR(16) NOT NULL DEFAULT 'balanced'",
+        "ai_strictness": "VARCHAR(16) NOT NULL DEFAULT 'balanced'",
+        "discovery_depth": "VARCHAR(16) NOT NULL DEFAULT 'standard'",
     }
     for column, definition in additions.items():
         if column not in columns:

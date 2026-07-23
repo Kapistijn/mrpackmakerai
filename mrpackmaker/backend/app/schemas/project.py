@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.models.enums import DifficultyType, LoaderType, PerformancePreference, ProjectStatus, ThemeType
+from app.models.enums import DifficultyType, LoaderType, PerformancePreference, ProjectStatus, ShaderSupport, ThemeType
 from app.schemas.mod import ModEntry
 
 
@@ -24,6 +24,17 @@ class ProjectSettings(BaseModel):
     minimum_mods: int | None = Field(default=None, ge=1, le=300)
     maximum_mods: int | None = Field(default=None, ge=1, le=300)
     minimum_downloads: int = Field(default=0, ge=0)
+    # --- 1.8.7: functional advanced configuration -------------------------
+    target_ram_gb: int | None = Field(default=None, ge=1, le=128)
+    target_fps: int | None = Field(default=None, ge=1, le=1000)
+    shader_support: ShaderSupport = ShaderSupport.OFF
+    shader_quality: str | None = None
+    resourcepack_support: bool = False
+    required_mods: list[str] = Field(default_factory=list)
+    forbidden_mods: list[str] = Field(default_factory=list)
+    ai_creativity: str = "balanced"
+    ai_strictness: str = "balanced"
+    discovery_depth: str = "standard"
 
     @field_validator("name")
     @classmethod
@@ -55,6 +66,16 @@ class ProjectUpdate(BaseModel):
     minimum_mods: int | None = Field(default=None, ge=1, le=300)
     maximum_mods: int | None = Field(default=None, ge=1, le=300)
     minimum_downloads: int | None = Field(default=None, ge=0)
+    target_ram_gb: int | None = Field(default=None, ge=1, le=128)
+    target_fps: int | None = Field(default=None, ge=1, le=1000)
+    shader_support: ShaderSupport | None = None
+    shader_quality: str | None = None
+    resourcepack_support: bool | None = None
+    required_mods: list[str] | None = None
+    forbidden_mods: list[str] | None = None
+    ai_creativity: str | None = None
+    ai_strictness: str | None = None
+    discovery_depth: str | None = None
     mods: list[ModEntry] | None = None
 
 
@@ -73,6 +94,16 @@ class ProjectResponse(BaseModel):
     minimum_mods: int | None
     maximum_mods: int | None
     minimum_downloads: int
+    target_ram_gb: int | None
+    target_fps: int | None
+    shader_support: ShaderSupport
+    shader_quality: str | None
+    resourcepack_support: bool
+    required_mods: list[str]
+    forbidden_mods: list[str]
+    ai_creativity: str
+    ai_strictness: str
+    discovery_depth: str
     status: ProjectStatus
     mods: list[dict[str, Any]]
     resolved_loader_version: str | None

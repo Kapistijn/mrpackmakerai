@@ -31,6 +31,21 @@ class PerformancePreference(str, Enum):
     VISUALS = "visuals"
 
 
+class ShaderSupport(str, Enum):
+    """How the exported pack should treat shaders.
+
+    OFF      - no shader loader, no shader configs.
+    OPTIONAL - bundle an Iris/Oculus-compatible loader so shaders *can* be
+               enabled by the player, but do not force a pack.
+    ENABLED  - bundle the loader, recommend a shaderpack and write shader
+               configs so shaders work out of the box.
+    """
+
+    OFF = "off"
+    OPTIONAL = "optional"
+    ENABLED = "enabled"
+
+
 class ProjectStatus(str, Enum):
     DRAFT = "draft"
     GENERATING = "generating"
