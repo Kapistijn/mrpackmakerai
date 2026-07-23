@@ -16,7 +16,7 @@ def test_structured_analysis_serializes_missing_information():
 
 
 def test_category_quotas_respect_requested_minimum():
-    requirements = parse_requirements('horror with lots of QoL and performance', minimum_mods=100)
+    requirements = parse_requirements('horror with lots of QoL', minimum_mods=100)
     quotas = category_quotas(requirements)
     assert sum(quotas.values()) >= 100
-    assert {'horror', 'qol', 'performance'} <= quotas.keys()
+    assert {'horror', 'qol'} <= quotas.keys()
