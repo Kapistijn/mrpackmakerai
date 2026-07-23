@@ -1,47 +1,40 @@
 # Changelog
 
+## 1.7.2
+
+Architecture and quality update for the path toward a stable v1.0.
+
+### AI pipeline
+
+- Added staged intent extraction for themes, gameplay styles, explicit
+  preferences, exclusions, counts, multiplayer and performance signals.
+- Added consistency validation for impossible mod-count bounds and competing
+  themes.
+- Prompt rendering keeps the original user wording out of the generation system
+  prompt and adds stable project invariants, dependency and deduplication rules.
+- AI transport now uses bounded exponential retries for transient failures,
+  deterministic model discovery, and zero SDK-level retry duplication.
+
+### Dependency and export correctness
+
+- Refactored dependency graphs with deterministic traversal, reverse edges,
+  required/optional separation, canonical cycle detection and topological order.
+- Export validation now blocks cross-catalog duplicate identities, duplicate
+  hashes, insecure HTTP downloads, unsafe filenames, missing checksums and
+  missing file sizes.
+- CI now runs Python compilation checks and triggers on release branches.
+
+### Tests
+
+- Added regression tests for dependency order, cycles, optional dependencies,
+  prompt intent/validation, prompt privacy, duplicate hashes and export safety.
+- Backend and frontend versions are 1.7.2.
+
 ## 1.7.1
 
-Release-readiness verification pass focused on correctness, compatibility
-visibility, and preventing silent runtime assumptions.
-
-### Added
-
-- Compatibility metrics contract covering Minecraft/loader identity, pinned
-  loader version, dependency counts, duplicate projects, missing files/libraries,
-  incompatibilities, performance score, RAM/CPU/startup estimates, and download
-  size. Unknown machine-specific values remain null instead of pretending to be
-  measured.
-- Duplicate projects are now explicit compatibility errors, not merely hidden
-  during generation.
-- Regression tests cover cross-source identity, metrics nullability, enum
-  serialization, and pinned loader export behavior.
-
-### Hardened
-
-- Release metadata is now 1.7.1 for both backend and frontend.
-- The previous 1.7 loader picker, additive migration, safe deletion, prompt
-  pipeline, cross-catalog deduplication, and export pinning remain intact.
-
-### Verification note
-
-CI remains the source of truth for the full pytest suite and frontend build.
-This branch adds tests for the new behavior but does not claim a green result
-until GitHub Actions reports it.
+Compatibility metrics, duplicate blockers and release-readiness verification.
 
 ## 1.7
 
-Public-release hardening and product foundation.
-
-- Loader-version picker and persistence.
-- Structured prompt normalization.
-- Cross-catalog deduplication.
-- Safe project deletion and pinned export.
-
-## 1.6.3
-
-Reliability and correctness release for the generation pipeline.
-
-## 1.6.2
-
-Generation, provider, CurseForge selection, startup, and cache reliability fixes.
+Loader-version selection, pinned export, safe deletion, prompt foundation and
+cross-catalog deduplication.
