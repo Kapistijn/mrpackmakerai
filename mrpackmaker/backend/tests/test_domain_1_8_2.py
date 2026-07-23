@@ -32,6 +32,15 @@ def test_requirement_analysis_requires_questions_when_information_is_missing():
         RequirementAnalysis(profile(), ConfidenceLevel.MISSING_INFORMATION)
 
 
+def test_requirement_analysis_supports_understood_and_uncertain_states():
+    understood = RequirementAnalysis(profile(), ConfidenceLevel.UNDERSTOOD)
+    uncertain = RequirementAnalysis(profile(), ConfidenceLevel.UNCERTAIN)
+    assert understood.confidence is ConfidenceLevel.UNDERSTOOD
+    assert uncertain.confidence is ConfidenceLevel.UNCERTAIN
+    assert json.loads(json.dumps(understood.to_dict()))["confidence"] == "understood"
+    assert json.loads(json.dumps(uncertain.to_dict()))["confidence"] == "uncertain"
+
+
 def test_revision_updates_requirements_without_mutating_base():
     base = profile(features={"tech"})
     brief = GenerationBrief(base, "RPG", {"rpg": 1}, 1)
