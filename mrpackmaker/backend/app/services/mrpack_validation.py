@@ -12,6 +12,10 @@ from app.services.mod_resolver import mod_identity
 
 ALLOWED_DOWNLOAD_HOSTS = ("cdn.modrinth.com", "github.com", "raw.githubusercontent.com", "objects.githubusercontent.com", "gitlab.com", "codeberg.org")
 
+# The Modrinth pack format copies files into the instance; only these target
+# folders are permitted for downloadable entries.
+ALLOWED_INSTALL_PREFIXES = ("mods/", "shaderpacks/", "resourcepacks/")
+
 
 @dataclass(frozen=True)
 class ExportIssue:
@@ -27,6 +31,26 @@ class MrpackValidationError(ValueError):
 
 def mod_key(mod: ModEntry) -> str:
     return f"{mod.source}:{mod.id}"
+
+
+def install_path_for(mod: ModEntry) -> str | None:
+    """Resolve the in-instance install path for a mod.
+
+    Honors an explicit ``install_path`` when set, otherwise derives the target
+    folder from the mod's categories (shaderpacks/ or resourcepacks/), falling
+    back to mods/<file_name>.
+    """
+    if not mod.file_name:
+        return None
+    explicit = getattr(mod, "install_path", None)
+    if explicit:
+        return explicit
+    category_text = " ".join(mod.categories).casefold()
+    if "shader" in category_text:
+        return f"shaderpacks/{mod.file_name}"
+    if "resourcepack" in category_text or "resource pack" in category_text:
+        return f"resourcepacks/{mod.file_name}"
+    return f"mods/{mod.file_name}"
 
 
 def _safe_mod_filename(filename: str) -> bool:
@@ -75,7 +99,10 @@ def validate_export_inputs(project: Project, mods: list[ModEntry]) -> list[Expor
         if not _safe_mod_filename(mod.file_name):
             issues.append(ExportIssue("unsafe_file_name", f"{mod.name} has an unsafe file name."))
             continue
-        pack_path = f"mods/{mod.file_name}"
+        pack_path = install_path_for(mod)
+        if not pack_path or not pack_path.startswith(ALLOWED_INSTALL_PREFIXES):
+            issues.append(ExportIssue("unsafe_install_path", f"{mod.name} has an unsupported install path."))
+            continue
         if pack_path in seen_paths:
             issues.append(ExportIssue("duplicate_file", f"Multiple mods use '{pack_path}'."))
         seen_paths.add(pack_path)

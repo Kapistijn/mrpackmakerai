@@ -1,4 +1,10 @@
-"""Validated Modrinth MRPack ZIP generator."""
+"""Validated Modrinth MRPack ZIP generator.
+
+Beyond mods, the writer now emits an ``overrides/`` tree (config, options.txt,
+shaderpacks/resourcepacks folders) and a ``pack_info.json`` descriptor derived
+from the pack profile, so RAM / FPS / shader / performance choices are reflected
+in the exported artifact.
+"""
 from __future__ import annotations
 import json, logging, os, re, tempfile, zipfile
 from datetime import datetime, timezone
@@ -8,20 +14,25 @@ from app.config import config
 from app.models.enums import LoaderType
 from app.models.project import Project
 from app.schemas.mod import ModEntry
-from app.services.mrpack_validation import ExportIssue, MrpackValidationError, validate_export_inputs
+from app.services.pack_assets import override_files
+from app.services.pack_profile import PackProfile, profile_from_project
+from app.services.mrpack_validation import ExportIssue, MrpackValidationError, install_path_for, validate_export_inputs
 logger=logging.getLogger(__name__)
 LOADER_DEPENDENCY_KEYS={LoaderType.FABRIC:'fabric-loader',LoaderType.FORGE:'forge',LoaderType.NEOFORGE:'neoforge'}
+ALLOWED_PATH_PREFIXES=('mods/','shaderpacks/','resourcepacks/')
 def _sanitize_filename(name:str)->str:
     safe=re.sub(r'[^\w\s-]','',name).strip().replace(' ','-'); return safe or 'modpack'
 class MrpackGenerator:
-    def build_index(self,project:Project,mods:list[ModEntry])->dict[str,Any]:
+    def build_index(self,project:Project,mods:list[ModEntry],profile:PackProfile|None=None)->dict[str,Any]:
         loader=LoaderType(project.loader); selected_loader=project.loader_version or project.resolved_loader_version
         if not selected_loader: raise MrpackValidationError([ExportIssue('loader_version_missing','The selected loader version has not been resolved.')])
         loader_key=LOADER_DEPENDENCY_KEYS[loader]
         index={'formatVersion':1,'game':'minecraft','versionId':datetime.now(timezone.utc).strftime('%Y.%m.%d-%H%M%S'),'name':project.name,'summary':project.description,'files':[],'dependencies':{'minecraft':project.minecraft_version,loader_key:selected_loader}}
         for mod in mods:
-            index['files'].append({'path':f'mods/{mod.file_name}','hashes':{a:v for a,v in {'sha1':mod.hashes.sha1,'sha512':mod.hashes.sha512}.items() if v},'downloads':[mod.download_url],'fileSize':mod.file_size})
+            index['files'].append({'path':install_path_for(mod),'hashes':{a:v for a,v in {'sha1':mod.hashes.sha1,'sha512':mod.hashes.sha512}.items() if v},'downloads':[mod.download_url],'fileSize':mod.file_size})
         return index
+    def build_overrides(self,profile:PackProfile,mods:list[ModEntry])->dict[str,str]:
+        return override_files(profile,mods)
     def _validate_archive(self,path:Path)->None:
         with zipfile.ZipFile(path,'r') as archive:
             if archive.testzip(): raise RuntimeError('Corrupt ZIP member')
@@ -33,14 +44,22 @@ class MrpackGenerator:
             dependencies=index.get('dependencies',{})
             if not dependencies.get('minecraft') or not any(key!='minecraft' for key in dependencies): raise RuntimeError('MRPack is missing loader metadata')
             for entry in index.get('files',[]):
-                if not entry.get('path','').startswith('mods/') or not entry.get('hashes') or not entry.get('downloads') or not entry.get('fileSize'): raise RuntimeError('MRPack contains an unresolved file')
-    def generate(self,project:Project)->Path:
-        mods=[ModEntry.model_validate(raw) for raw in json.loads(project.mods_json or '[]')]; issues=validate_export_inputs(project,mods)
-        if issues: raise MrpackValidationError(issues)
-        index=self.build_index(project,mods); config.output_dir.mkdir(parents=True,exist_ok=True); output_path=config.output_dir/f'{_sanitize_filename(project.name)}.mrpack'; descriptor,temp_name=tempfile.mkstemp(prefix=f'.{_sanitize_filename(project.name)}-',suffix='.mrpack',dir=config.output_dir); os.close(descriptor); temp=Path(temp_name)
+                path_value=entry.get('path','')
+                if not path_value.startswith(ALLOWED_PATH_PREFIXES) or not entry.get('hashes') or not entry.get('downloads') or not entry.get('fileSize'): raise RuntimeError('MRPack contains an unresolved file')
+    def write_pack(self,index:dict[str,Any],overrides:dict[str,str],output_path:Path)->Path:
+        output_path=Path(output_path); output_path.parent.mkdir(parents=True,exist_ok=True)
+        descriptor,temp_name=tempfile.mkstemp(prefix=f'.{output_path.stem}-',suffix='.mrpack',dir=output_path.parent); os.close(descriptor); temp=Path(temp_name)
         try:
-            with zipfile.ZipFile(temp,'w',zipfile.ZIP_DEFLATED) as archive: archive.writestr('modrinth.index.json',json.dumps(index,indent=2))
+            with zipfile.ZipFile(temp,'w',zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr('modrinth.index.json',json.dumps(index,indent=2))
+                for relative_path,content in (overrides or {}).items(): archive.writestr(f'overrides/{relative_path}',content)
             self._validate_archive(temp); temp.replace(output_path)
         finally:
             if temp.exists(): temp.unlink(missing_ok=True)
         logger.info('Generated and validated MRPack: %s',output_path); return output_path
+    def generate(self,project:Project)->Path:
+        mods=[ModEntry.model_validate(raw) for raw in json.loads(project.mods_json or '[]')]; issues=validate_export_inputs(project,mods)
+        if issues: raise MrpackValidationError(issues)
+        profile=profile_from_project(project); index=self.build_index(project,mods,profile); overrides=self.build_overrides(profile,mods)
+        config.output_dir.mkdir(parents=True,exist_ok=True); output_path=config.output_dir/f'{_sanitize_filename(project.name)}.mrpack'
+        return self.write_pack(index,overrides,output_path)
