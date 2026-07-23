@@ -8,15 +8,20 @@ from app.db.session import AsyncSessionLocal
 from app.models.enums import LoaderType, ProjectStatus, ThemeType
 from app.models.generation import GenerationRun
 from app.models.project import Project
-from app.schemas.ai import AIProgressEvent, CategoryPlan, GameplayAnalysis, RequirementAnalysisSchema
+from app.schemas.ai import AIProgressEvent, CategoryPlan, GameplayAnalysis, IntentAnalysisSchema, RequirementAnalysisSchema
 from app.schemas.mod import ModEntry
 from app.services.ai_provider import AIProviderError, create_ai_provider
 from app.services.curseforge import CurseForgeClient
+from app.services.intent_analysis import analyze_intent, merge_ai_intent
 from app.services.mod_resolver import ModResolver, mod_identity
-from app.services.mod_scoring import rank_mods, select_diverse
+from app.services.mod_scoring import rank_mods
+from app.services.pack_assets import shader_loader_queries
+from app.services.pack_profile import build_pack_profile
 from app.services.prompt_pipeline import optimize_prompt
+from app.services.quality_scoring import rank_by_quality, select_quality
 from app.services.requirements import Requirements, parse_requirements, theme_matches
 from app.services.intelligent_planning import build_pack_design, review_pack
+from app.services.self_check import fill_missing, verify_requirements
 from app.services.modrinth import ModrinthClient
 from app.services.source_registry import ModSourceRegistry, UnknownModSourceError
 logger=logging.getLogger(__name__)
@@ -54,28 +59,44 @@ class AIOrchestrator:
     project=await db.get(Project,project_id)
     if not project:return
     run=GenerationRun(project_id=project_id,provider=provider.provider_id if provider else "quick");db.add(run);project.status=ProjectStatus.GENERATING.value;await db.flush();await db.commit()
-    loader,mc_version=LoaderType(project.loader),project.minecraft_version;prompt=project.generation_prompt or project.description;requirements=parse_requirements(prompt,theme=project.theme,minimum_mods=project.minimum_mods,maximum_mods=project.maximum_mods,minimum_downloads=project.minimum_downloads)
+    loader,mc_version=LoaderType(project.loader),project.minecraft_version;prompt=project.generation_prompt or project.description
+    requirements=parse_requirements(prompt,theme=project.theme,minimum_mods=project.minimum_mods,maximum_mods=project.maximum_mods,minimum_downloads=project.minimum_downloads,target_ram_gb=project.target_ram_gb,target_fps=project.target_fps,shader_support=project.shader_support,performance_preference=project.performance_preference,visual_quality=project.shader_quality,resourcepack_support=project.resourcepack_support)
     if requirements.warnings:raise RuntimeError("; ".join(requirements.warnings))
+    intent=analyze_intent(prompt,theme=project.theme,forbidden=requirements.forbidden_features);profile=build_pack_profile(requirements)
     seed=project.id ^ int(datetime.now(timezone.utc).timestamp());brief=optimize_prompt(prompt,minecraft_version=mc_version,loader=loader.value,theme=project.theme,difficulty=project.difficulty,performance_preference=project.performance_preference);design=build_pack_design(requirements)
-    target_count=min(requirements.maximum_mods or 300,max(requirements.minimum_mods or 40,requirements.target_count));queries=list(dict.fromkeys(self._fallback_queries(project,prompt)+list(requirements.required_features)))
-    await self._emit(project_id,AIProgressEvent(step=1,message="Designing the pack vision and gameplay loop...",data={"vision":design.vision,"gameplay_loop":design.gameplay_loop,"categories":design.categories}),run)
+    target_count=max(requirements.minimum_mods or 40,min(profile.max_content_mods,requirements.maximum_mods or profile.max_content_mods))
+    queries=list(dict.fromkeys(self._fallback_queries(project,prompt)+list(requirements.required_features)+list(intent.categories)+shader_loader_queries(profile,loader.value)))
+    await self._emit(project_id,AIProgressEvent(step=1,message="Analyzing intent and designing the pack vision...",data={"intent":intent.to_dict(),"profile":profile.as_pack_info(),"vision":design.vision,"gameplay_loop":design.gameplay_loop}),run)
     if use_ai and provider is not None:
      try:
       analysis=await provider.chat_json(system_prompt=brief.system_prompt+"\nReason through player experience before selecting mods. Return structured requirements only; never invent missing information.",user_prompt=brief.as_user_prompt(),schema=RequirementAnalysisSchema)
       if analysis.missing_information:raise RuntimeError(f"Missing required information: {'; '.join(analysis.missing_information)}")
       await self._emit(project_id,AIProgressEvent(step=2,message="Understanding requirements and planning categories...",data=analysis.model_dump(mode="json")),run)
-      if analysis.target_mod_count:target_count=min(requirements.maximum_mods or 300,max(requirements.minimum_mods or 1,analysis.target_mod_count))
+      if analysis.target_mod_count:target_count=max(requirements.minimum_mods or 1,min(profile.max_content_mods,analysis.target_mod_count))
       queries=list(dict.fromkeys([*queries,*(analysis.gameplay_style or []),*(analysis.required_mods or [])]))
+      try:
+       ai_intent=await provider.chat_json(system_prompt=brief.system_prompt+"\nReturn a machine-readable intent analysis (goal, categories, avoid).",user_prompt=f"{brief.as_user_prompt()}\nDeterministic intent: {json.dumps(intent.to_dict())}",schema=IntentAnalysisSchema)
+       intent=merge_ai_intent(intent,goal=ai_intent.goal or None,categories=ai_intent.categories,avoid=ai_intent.avoid,realism_focus=ai_intent.realism_focus);queries=list(dict.fromkeys([*queries,*intent.categories]))
+      except AIProviderError as exc:logger.warning("AI intent enrichment failed; deterministic intent remains active: %s",exc)
       gameplay=await provider.chat_json(system_prompt=brief.system_prompt,user_prompt=f"{brief.as_user_prompt()}\nDesign: {design}\nStructured analysis: {analysis.model_dump_json()}",schema=GameplayAnalysis)
       plan=await provider.chat_json(system_prompt=brief.system_prompt,user_prompt=f"{brief.as_user_prompt()}\nDesign: {design}\nAnalysis: {gameplay.model_dump_json()}",schema=CategoryPlan)
       if plan.search_queries:queries=list(dict.fromkeys([*plan.search_queries,*queries]))
      except AIProviderError as exc:logger.warning("AI planning failed; deterministic design remains active: %s",exc)
-    else:await self._emit(project_id,AIProgressEvent(step=2,message="Using deterministic design plan...",data={"categories":design.categories}),run)
+    else:await self._emit(project_id,AIProgressEvent(step=2,message="Using deterministic design plan...",data={"intent":intent.to_dict(),"categories":design.categories}),run)
     await self._emit(project_id,AIProgressEvent(step=3,message="Searching planned categories and expanded queries..."),run);candidates=await self._gather_candidates(registry,resolver,queries,mc_version,loader,requirements,seed=seed)
     if requirements.minimum_mods is not None and len(candidates)<requirements.minimum_mods:raise RuntimeError("Not enough compatible candidates for the requested minimum")
     if not candidates:raise RuntimeError("No compatible mods matched the selected requirements")
-    await self._emit(project_id,AIProgressEvent(step=4,message="Scoring relevance, compatibility, performance and diversity..."),run);selected=select_diverse(candidates,target_count)
+    await self._emit(project_id,AIProgressEvent(step=4,message="Scoring intent, realism, compatibility and performance cost..."),run)
+    ranked=rank_by_quality(candidates,intent,profile,minimum_downloads=requirements.minimum_downloads);selected=select_quality(ranked,target_count,profile)
+    if requirements.minimum_mods is not None and len(selected)<requirements.minimum_mods:
+     for score in ranked:
+      if len(selected)>=requirements.minimum_mods:break
+      if all((m.source,m.id)!=(score.mod.source,score.mod.id) for m in selected):selected.append(score.mod)
     if requirements.minimum_mods is not None and len(selected)<requirements.minimum_mods:raise RuntimeError("Could not select the requested minimum")
+    check=verify_requirements(selected,intent)
+    if not check.complete:
+     additions=fill_missing(candidates,selected,check,intent,profile)
+     if additions:selected=selected+additions;check=verify_requirements(selected,intent)
     await self._emit(project_id,AIProgressEvent(step=5,message="Resolving dependencies and compatibility..."),run);resolved_mods=[];resolved_keys=set();pending=[resolver.mod_key(item) for item in selected]
     while pending and len(resolved_mods)<max(300,target_count*2):
      key=pending.pop(0)
@@ -91,13 +112,13 @@ class AIOrchestrator:
        if dep_key not in resolved_keys:pending.append(dep_key)
     resolved_mods=resolver.deduplicate(resolved_mods)
     if requirements.minimum_mods is not None and len(resolved_mods)<requirements.minimum_mods:raise RuntimeError("Dependencies reduced the result below the requested minimum")
-    quality=review_pack(resolved_mods,requirements)
-    await self._emit(project_id,AIProgressEvent(step=6,message="Self-reviewing balance, atmosphere and compatibility...",data={"quality_score":quality.overall,"quality":quality.__dict__}),run)
+    quality=review_pack(resolved_mods,requirements);final_check=verify_requirements(resolved_mods,intent)
+    await self._emit(project_id,AIProgressEvent(step=6,message="Self-reviewing intent coverage, balance and compatibility...",data={"quality_score":quality.overall,"quality":quality.__dict__,"requirement_check":final_check.to_dict(),"profile":profile.as_pack_info()}),run)
     if quality.compatibility<1:raise RuntimeError("Self-review found unresolved downloadable-file compatibility issues")
     loader_version=project.loader_version or await resolver.resolve_loader_version(loader,mc_version)
     if not loader_version:raise RuntimeError(f"No compatible {loader.value} loader version found")
-    project.mods_json=json.dumps([mod.model_dump(mode="json") for mod in resolved_mods]);project.resolved_loader_version=loader_version;project.ai_summary=f"Designed {project.theme} pack: {len(resolved_mods)} mods, quality {quality.overall:.2f}.";project.status=ProjectStatus.REVIEW.value;run.status="completed";run.summary=project.ai_summary;run.completed_at=datetime.now(timezone.utc)
-    await self._emit(project_id,AIProgressEvent(step=7,message=f"Generation complete: {len(resolved_mods)} mods.",status="complete",data={"mod_count":len(resolved_mods),"target_count":target_count,"quality_score":quality.overall,"seed":seed}),run);await db.commit()
+    project.mods_json=json.dumps([mod.model_dump(mode="json") for mod in resolved_mods]);project.resolved_loader_version=loader_version;project.ai_summary=f"Designed {project.theme} pack ({intent.goal}): {len(resolved_mods)} mods, quality {quality.overall:.2f}, coverage {len(final_check.satisfied)}/{len(intent.categories) or 0}.";project.status=ProjectStatus.REVIEW.value;run.status="completed";run.summary=project.ai_summary;run.completed_at=datetime.now(timezone.utc)
+    await self._emit(project_id,AIProgressEvent(step=7,message=f"Generation complete: {len(resolved_mods)} mods.",status="complete",data={"mod_count":len(resolved_mods),"target_count":target_count,"quality_score":quality.overall,"requirement_check":final_check.to_dict(),"seed":seed}),run);await db.commit()
   except asyncio.CancelledError:await self._mark_cancelled(project_id);await self._emit(project_id,AIProgressEvent(step=0,message="Generation cancelled.",status="cancelled"));raise
   except Exception as exc:logger.exception("Generation failed for project %d",project_id);await self._mark_failed(project_id,str(exc));await self._emit(project_id,AIProgressEvent(step=0,message=f"Generation failed: {exc}",status="error"))
   finally:
