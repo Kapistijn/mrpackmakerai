@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import pytest
@@ -13,6 +14,10 @@ from app.schemas.ai import ModRanking
 from app.schemas.mod import ModEntry, ModHash
 
 
+def run(coro):
+    return asyncio.run(coro)
+
+
 def entry(source: str = "modrinth", *, detailed: bool = True) -> ModEntry:
     return ModEntry(id="abc", source=source, name="Example", slug="example", summary="A test mod", downloads=12, categories=["horror"], loaders=["fabric"], selected_version="1.20.1", file_name="example.jar" if detailed else None, download_url="https://example.invalid/example.jar" if detailed else None, hashes=ModHash(sha512="sha512-value" if detailed else None))
 
@@ -26,32 +31,35 @@ class FakeCurseForge(FakeModrinth):
     pass
 
 
-@pytest.mark.asyncio
-async def test_modrinth_mapping_and_protocol():
-    adapter = ModrinthAdapter(FakeModrinth(), "1.20.1", Loader.FABRIC)
-    result = await adapter.search("horror", minecraft_version="1.20.1", loader=Loader.FABRIC)
-    assert isinstance(adapter, ModrinthProvider)
-    assert result[0].identity.sources["modrinth"] == "abc"
-    assert json.loads(json.dumps(result[0].to_dict()))["source"] == "modrinth"
+def test_modrinth_mapping_and_protocol():
+    async def exercise():
+        adapter = ModrinthAdapter(FakeModrinth(), "1.20.1", Loader.FABRIC)
+        result = await adapter.search("horror", minecraft_version="1.20.1", loader=Loader.FABRIC)
+        assert isinstance(adapter, ModrinthProvider)
+        assert result[0].identity.sources["modrinth"] == "abc"
+        assert json.loads(json.dumps(result[0].to_dict()))["source"] == "modrinth"
+    run(exercise())
 
 
-@pytest.mark.asyncio
-async def test_curseforge_mapping_and_protocol():
-    adapter = CurseForgeAdapter(FakeCurseForge(), "1.20.1", Loader.FABRIC)
-    result = await adapter.get("abc")
-    assert isinstance(adapter, CurseForgeProvider)
-    assert result is not None and result.source is ModSource.CURSEFORGE
-    assert result.files[0].sha512 == "sha512-value"
+def test_curseforge_mapping_and_protocol():
+    async def exercise():
+        adapter = CurseForgeAdapter(FakeCurseForge(), "1.20.1", Loader.FABRIC)
+        result = await adapter.get("abc")
+        assert isinstance(adapter, CurseForgeProvider)
+        assert result is not None and result.source is ModSource.CURSEFORGE
+        assert result.files[0].sha512 == "sha512-value"
+    run(exercise())
 
 
-@pytest.mark.asyncio
-async def test_missing_catalog_fields_raise_typed_error():
-    class Missing:
-        async def get_mod_detail(self, *args): return entry(detailed=False)
+def test_missing_catalog_fields_raise_typed_error():
+    async def exercise():
+        class Missing:
+            async def get_mod_detail(self, *args): return entry(detailed=False)
 
-    adapter = ModrinthAdapter(Missing(), "1.20.1", Loader.FABRIC)
-    with pytest.raises(InvalidResponseError):
-        await adapter.get("abc")
+        adapter = ModrinthAdapter(Missing(), "1.20.1", Loader.FABRIC)
+        with pytest.raises(InvalidResponseError):
+            await adapter.get("abc")
+    run(exercise())
 
 
 class FakeAI:
@@ -64,28 +72,30 @@ class FakeAI:
         pass
 
 
-@pytest.mark.asyncio
-async def test_ai_adapter_capabilities_and_candidate_boundary():
-    adapter = OpenAICompatibleAdapter(FakeAI(), minecraft_version="1.20.1", loader=Loader.FABRIC, theme="horror")
-    assert isinstance(adapter, AIProvider)
-    assert adapter.name() == "test-provider"
-    profile = await adapter.analyze_requirements("horror QoL, minimaal 1 mods")
-    brief = await adapter.build_brief(profile)
-    identity = CanonicalModIdentity("modrinth:abc", "Example", {ModSource.MODRINTH: "abc"})
-    candidate = ModCandidate(identity, ModSource.MODRINTH, "abc", "example", "Example", "desc", 1, frozenset())
-    selected = await adapter.select(brief, [candidate])
-    assert selected[0].candidate is candidate and selected[0].reason == "matches request"
+def test_ai_adapter_capabilities_and_candidate_boundary():
+    async def exercise():
+        adapter = OpenAICompatibleAdapter(FakeAI(), minecraft_version="1.20.1", loader=Loader.FABRIC, theme="horror")
+        assert isinstance(adapter, AIProvider)
+        assert adapter.name() == "test-provider"
+        profile = await adapter.analyze_requirements("horror QoL, minimaal 1 mods")
+        brief = await adapter.build_brief(profile)
+        identity = CanonicalModIdentity("modrinth:abc", "Example", {ModSource.MODRINTH: "abc"})
+        candidate = ModCandidate(identity, ModSource.MODRINTH, "abc", "example", "Example", "desc", 1, frozenset())
+        selected = await adapter.select(brief, [candidate])
+        assert selected[0].candidate is candidate and selected[0].reason == "matches request"
+    run(exercise())
 
 
-@pytest.mark.asyncio
-async def test_ai_unknown_candidate_is_rejected():
-    class BadAI(FakeAI):
-        async def chat_json(self, system_prompt, user_prompt, schema): return ModRanking(selected_ids=["missing"])
+def test_ai_unknown_candidate_is_rejected():
+    async def exercise():
+        class BadAI(FakeAI):
+            async def chat_json(self, system_prompt, user_prompt, schema): return ModRanking(selected_ids=["missing"])
 
-    adapter = OpenAICompatibleAdapter(BadAI(), minecraft_version="1.20.1", loader=Loader.FABRIC)
-    profile = await adapter.analyze_requirements("horror")
-    brief = await adapter.build_brief(profile)
-    identity = CanonicalModIdentity("modrinth:abc", "Example", {ModSource.MODRINTH: "abc"})
-    candidate = ModCandidate(identity, ModSource.MODRINTH, "abc", "example", "Example", "desc", 1, frozenset())
-    with pytest.raises(InvalidResponseError):
-        await adapter.select(brief, [candidate])
+        adapter = OpenAICompatibleAdapter(BadAI(), minecraft_version="1.20.1", loader=Loader.FABRIC)
+        profile = await adapter.analyze_requirements("horror")
+        brief = await adapter.build_brief(profile)
+        identity = CanonicalModIdentity("modrinth:abc", "Example", {ModSource.MODRINTH: "abc"})
+        candidate = ModCandidate(identity, ModSource.MODRINTH, "abc", "example", "Example", "desc", 1, frozenset())
+        with pytest.raises(InvalidResponseError):
+            await adapter.select(brief, [candidate])
+    run(exercise())
