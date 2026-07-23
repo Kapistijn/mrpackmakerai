@@ -20,7 +20,7 @@ from app.services.curseforge import CurseForgeClient
 from app.services.mod_resolver import ModResolver, mod_identity
 from app.services.mod_scoring import rank_mods, select_diverse
 from app.services.prompt_pipeline import optimize_prompt
-from app.services.requirements import parse_requirements, theme_matches
+from app.services.requirements import Requirements, parse_requirements, theme_matches
 from app.services.modrinth import ModrinthClient
 from app.services.source_registry import ModSourceRegistry, UnknownModSourceError
 
@@ -58,7 +58,8 @@ class AIOrchestrator:
             history.append(event.model_dump(mode="json"))
             run.event_log_json = json.dumps(history)
 
-    async def _gather_candidates(self, registry, resolver, queries, mc_version, loader, requirements, *, seed: int) -> list[ModEntry]:
+    async def _gather_candidates(self, registry, resolver, queries, mc_version, loader, requirements: Requirements | None = None, *, seed: int = 0) -> list[ModEntry]:
+        """Gather compatible candidates; requirements is optional for legacy callers."""
         candidates: dict[str, ModEntry] = {}
         search_terms = list(dict.fromkeys([*queries[:16], ""]))
         for query in search_terms:
@@ -68,8 +69,10 @@ class AIOrchestrator:
                     logger.warning("Search failed on %s for '%s': %s", source.source_id, query, exc); continue
                 for hit in hits:
                     text = " ".join((hit.name, hit.slug, hit.summary, *hit.categories))
-                    if hit.downloads < requirements.minimum_downloads or not theme_matches(text, requirements): continue
+                    if requirements is not None and (hit.downloads < requirements.minimum_downloads or not theme_matches(text, requirements)): continue
                     candidates.setdefault(mod_identity(hit), hit)
+        if requirements is None:
+            return list(candidates.values())
         return [item.mod for item in rank_mods(list(candidates.values()), requirements, seed=seed) if item.score >= 0]
 
     async def generate(self, project_id: int, *, use_ai: bool = True) -> None:
@@ -104,13 +107,11 @@ class AIOrchestrator:
                     await self._emit(project_id, AIProgressEvent(step=1, message="Analyzing requirements..."), run); await self._emit(project_id, AIProgressEvent(step=2, message="Personalizing categories...", data={"themes": requirements.themes, "features": requirements.required_features}), run)
                 await self._emit(project_id, AIProgressEvent(step=3, message="Finding requirement-matched mods..."), run)
                 candidates = await self._gather_candidates(registry, resolver, queries, mc_version, loader, requirements, seed=seed)
-                if requirements.minimum_mods is not None and len(candidates) < requirements.minimum_mods:
-                    raise RuntimeError(f"Only {len(candidates)} compatible mods matched your requirements; refusing to create a smaller pack than the requested minimum of {requirements.minimum_mods}.")
+                if requirements.minimum_mods is not None and len(candidates) < requirements.minimum_mods: raise RuntimeError(f"Only {len(candidates)} compatible mods matched your requirements; refusing to create a smaller pack than the requested minimum of {requirements.minimum_mods}.")
                 if not candidates: raise RuntimeError("No compatible mods matched the selected theme and requirements.")
                 await self._emit(project_id, AIProgressEvent(step=4, message="Scoring personalized candidates..."), run)
                 selected = select_diverse(candidates, target_count)
-                if requirements.minimum_mods is not None and len(selected) < requirements.minimum_mods:
-                    raise RuntimeError(f"Could not select the requested minimum of {requirements.minimum_mods} compatible mods; found {len(selected)}.")
+                if requirements.minimum_mods is not None and len(selected) < requirements.minimum_mods: raise RuntimeError(f"Could not select the requested minimum of {requirements.minimum_mods} compatible mods; found {len(selected)}.")
                 await self._emit(project_id, AIProgressEvent(step=5, message="Resolving dependencies and compatibility..."), run)
                 resolved_mods: list[ModEntry] = []; resolved_keys: set[str] = set(); pending = [resolver.mod_key(item) for item in selected]
                 while pending and len(resolved_mods) < max(300, target_count * 2):
@@ -127,8 +128,7 @@ class AIOrchestrator:
                             dep_key = f"{dependency.source or entry.source}:{dependency.project_id}"
                             if dep_key not in resolved_keys: pending.append(dep_key)
                 resolved_mods = resolver.deduplicate(resolved_mods)
-                if requirements.minimum_mods is not None and len(resolved_mods) < requirements.minimum_mods:
-                    raise RuntimeError(f"Dependencies and compatibility reduced the result to {len(resolved_mods)} mods, below your requested minimum of {requirements.minimum_mods}.")
+                if requirements.minimum_mods is not None and len(resolved_mods) < requirements.minimum_mods: raise RuntimeError(f"Dependencies and compatibility reduced the result to {len(resolved_mods)} mods, below your requested minimum of {requirements.minimum_mods}.")
                 await self._emit(project_id, AIProgressEvent(step=6, message="Running final quality checks and removing duplicates...", data={"mod_count": len(resolved_mods)}), run)
                 loader_version = project.loader_version or await resolver.resolve_loader_version(loader, mc_version)
                 if not loader_version: raise RuntimeError(f"No compatible {loader.value} loader version found for Minecraft {mc_version}.")
