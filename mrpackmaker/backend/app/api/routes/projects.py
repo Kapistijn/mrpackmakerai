@@ -15,7 +15,7 @@ from app.db.session import get_db
 from app.models.enums import LoaderType, ProjectStatus
 from app.models.project import Project
 from app.schemas.project import ProjectCreate, ProjectListItem, ProjectResponse, ProjectUpdate
-from app.services.modrinth import ModrinthClient
+from app.services.loader_metadata import LoaderMetadataError, OfficialLoaderResolver
 
 router = APIRouter()
 
@@ -40,13 +40,16 @@ def _project_to_response(project: Project) -> ProjectResponse:
 
 @router.get("/loader-versions")
 async def loader_versions(mc: str = Query(..., min_length=3, max_length=32), loader: LoaderType = Query(...)):
-    client = ModrinthClient(config.apis.modrinth_key)
     try:
-        project_id = {LoaderType.FABRIC: "fabric-loader", LoaderType.FORGE: "forge", LoaderType.NEOFORGE: "neoforge"}[loader]
-        versions = await client.get_versions(project_id, mc, loader)
-        return {"minecraft_version": mc, "loader": loader.value, "versions": [{"id": i.get("id"), "version": i.get("version_number"), "type": i.get("version_type", "release"), "published": i.get("date_published")} for i in versions if i.get("id") and i.get("version_number")]}
-    finally:
-        await client.close()
+        versions = await OfficialLoaderResolver().list_versions(loader, mc)
+    except LoaderMetadataError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "minecraft_version": mc,
+        "loader": loader.value,
+        "source": versions[0].source if versions else None,
+        "versions": [{"id": f"{loader.value}:{item.version}", "version": item.version, "type": "release" if item.stable else "beta", "stable": item.stable} for item in versions],
+    }
 
 
 @router.get("", response_model=list[ProjectListItem])

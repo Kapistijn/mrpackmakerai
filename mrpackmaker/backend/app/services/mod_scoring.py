@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
+from typing import overload
 
 from app.schemas.mod import ModEntry
 from app.services.requirements import Requirements, theme_matches
@@ -50,20 +51,14 @@ def rank_mods(mods: list[ModEntry], requirements: Requirements, *, seed: int) ->
     return sorted(ranked, key=lambda item: item.score, reverse=True)
 
 
-def select_diverse(ranked: list[ScoredMod], count: int) -> list[ScoredMod]:
-    """Select high-scoring candidates while avoiding a single-category pack.
-
-    The first pass covers each available category, then fills remaining slots by
-    score. This keeps horror packs from becoming 150 copies of one utility type
-    without sacrificing the user's ranking or compatibility constraints.
-    """
+def _select_scored(ranked: list[ScoredMod], count: int) -> list[ScoredMod]:
     if count <= 0:
         return []
     selected: list[ScoredMod] = []
     used: set[str] = set()
     categories: set[str] = set()
     for item in ranked:
-        key = item.mod.source + ":" + item.mod.id
+        key = f"{item.mod.source}:{item.mod.id}"
         if key in used:
             continue
         item_categories = {category.casefold() for category in item.mod.categories}
@@ -74,10 +69,60 @@ def select_diverse(ranked: list[ScoredMod], count: int) -> list[ScoredMod]:
         if len(selected) >= count:
             return selected
     for item in ranked:
-        key = item.mod.source + ":" + item.mod.id
+        key = f"{item.mod.source}:{item.mod.id}"
         if key not in used:
             selected.append(item)
             used.add(key)
         if len(selected) >= count:
             break
     return selected
+
+
+def _select_candidates(candidates: list[ModEntry], count: int) -> list[ModEntry]:
+    if count <= 0:
+        return []
+    selected: list[ModEntry] = []
+    used: set[str] = set()
+    categories: set[str] = set()
+    for item in candidates:
+        key = f"{item.source}:{item.id}"
+        if key in used:
+            continue
+        item_categories = {category.casefold() for category in item.categories}
+        if item_categories - categories:
+            selected.append(item)
+            used.add(key)
+            categories.update(item_categories)
+        if len(selected) >= count:
+            return selected
+    for item in candidates:
+        key = f"{item.source}:{item.id}"
+        if key not in used:
+            selected.append(item)
+            used.add(key)
+        if len(selected) >= count:
+            break
+    return selected
+
+
+@overload
+def select_diverse(ranked: list[ScoredMod], count: int) -> list[ScoredMod]: ...
+
+
+@overload
+def select_diverse(ranked: list[ModEntry], count: int) -> list[ModEntry]: ...
+
+
+def select_diverse(ranked: list[ScoredMod] | list[ModEntry], count: int) -> list[ScoredMod] | list[ModEntry]:
+    """Select distinct categories for either established scoring shape.
+
+    ``rank_mods`` callers pass ``ScoredMod`` values. The live orchestrator
+    unwraps those values before selection and passes ``ModEntry`` objects.
+    Explicit overloads preserve both contracts while making the boundary
+    visible to static type checkers.
+    """
+    if not ranked:
+        return []
+    if isinstance(ranked[0], ScoredMod):
+        return _select_scored(ranked, count)
+    return _select_candidates(ranked, count)

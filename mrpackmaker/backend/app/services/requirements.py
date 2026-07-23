@@ -1,7 +1,8 @@
-"""Requirement parsing and hard theme policy for generation."""
+"""Requirement parsing, structured targets, and deterministic quota planning."""
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 
@@ -22,6 +23,23 @@ class Requirements:
         return self.maximum_mods or self.minimum_mods or 40
 
 
+def category_quotas(requirements: Requirements, target_count: int | None = None) -> dict[str, int]:
+    target = target_count or requirements.target_count
+    target = max(requirements.minimum_mods or 0, target)
+    if requirements.maximum_mods is not None: target = min(target, requirements.maximum_mods)
+    feature_text = " ".join((*requirements.themes, *requirements.required_features)).casefold()
+    categories: list[tuple[str, float]] = []
+    if requirements.themes: categories.append((requirements.themes[0], 0.15))
+    if any(term in feature_text for term in ("qol", "inventory", "utility", "storage")): categories.append(("qol", 0.20))
+    if any(term in feature_text for term in ("performance", "fps", "optimization")): categories.append(("performance", 0.10))
+    if any(term in feature_text for term in ("worldgen", "exploration", "adventure", "structures")): categories.append(("world", 0.15))
+    if any(term in feature_text for term in ("boss", "combat", "mobs")): categories.append(("combat", 0.15))
+    if not categories: categories.append(("requested", 0.50))
+    quotas = {name: max(1, int(target * share)) for name, share in categories}
+    quotas["remaining"] = max(0, target - sum(quotas.values()))
+    return quotas
+
+
 THEME_RULES: dict[str, dict[str, tuple[str, ...]]] = {
     "horror": {"include": ("horror", "mobs", "worldgen", "sound", "atmosphere", "lighting", "survival"), "exclude": ("cobblemon", "pokemon", "technology", "magic", "farming")},
     "technology": {"include": ("technology", "automation", "storage", "utility"), "exclude": ("magic",)},
@@ -37,13 +55,30 @@ def _number(text: str, markers: tuple[str, ...]) -> int | None:
     return None
 
 
+def _advanced(prompt: str) -> dict:
+    try:
+        value = json.loads(prompt)
+        return value.get("advanced", {}) if isinstance(value, dict) else {}
+    except (TypeError, json.JSONDecodeError):
+        return {}
+
+
 def parse_requirements(prompt: str, *, theme: str | None = None, minimum_mods: int | None = None, maximum_mods: int | None = None, minimum_downloads: int | None = None) -> Requirements:
     text = (prompt or "").casefold()
+    advanced = _advanced(prompt)
+    advanced_theme = str(advanced.get("theme", "")).casefold() or None
+    selected_theme = advanced_theme or theme
     detected_themes = [name for name in THEME_RULES if re.search(rf"\b{re.escape(name)}\b", text)]
-    if theme and theme in THEME_RULES and theme not in detected_themes: detected_themes.insert(0, theme)
+    if selected_theme and selected_theme in THEME_RULES and selected_theme not in detected_themes: detected_themes.insert(0, selected_theme)
     active = THEME_RULES.get(detected_themes[0], {}) if detected_themes else {}
     required = list(active.get("include", ()))
     forbidden = list(active.get("exclude", ()))
+    required.extend(str(item).casefold() for item in advanced.get("gameplay_style", []) if str(item).strip())
+    required.extend(str(item).casefold() for item in advanced.get("required_mods", []) if str(item).strip())
+    if advanced.get("qol_level") in {"high", "maximum"}: required.extend(("qol", "inventory", "ui", "storage"))
+    if advanced.get("shader_support") not in {None, "none"}: required.extend(("shader", "performance"))
+    if advanced.get("fps_target", 0) and int(advanced.get("fps_target", 0)) >= 120: required.append("performance")
+    forbidden.extend(str(item).casefold() for item in advanced.get("forbidden_mods", []) if str(item).strip())
     if re.search(r"qol|quality of life", text): required.extend(("qol", "inventory", "ui", "sound"))
     if re.search(r"boss|bazen", text): required.append("bosses")
     if re.search(r"monster|mob|zombie", text): required.append("mobs")
@@ -51,13 +86,14 @@ def parse_requirements(prompt: str, *, theme: str | None = None, minimum_mods: i
     if re.search(r"no technology|geen technologie", text): forbidden.append("technology")
     parsed_min = _number(text, (r"at least", r"minimum", r"minimaal", r"minstens"))
     parsed_max = _number(text, (r"at most", r"maximum", r"maximaal"))
+    effective_min = minimum_mods if minimum_mods is not None else advanced.get("minimum_mods", parsed_min)
+    effective_max = maximum_mods if maximum_mods is not None else advanced.get("maximum_mods", parsed_max)
     parsed_downloads = _number(text, (r"minimum\s+downloads?", r"min(?:imum)?\s+downloads?", r"downloads?\s*[:=]"))
-    effective_min = minimum_mods if minimum_mods is not None else parsed_min
-    effective_max = maximum_mods if maximum_mods is not None else parsed_max
-    # Zero means "no project override", allowing a prompt-level threshold.
     effective_downloads = minimum_downloads if minimum_downloads else (parsed_downloads or 0)
+    effective_min = int(effective_min) if effective_min is not None else None
+    effective_max = int(effective_max) if effective_max is not None else None
     warnings = ("minimum_mods exceeds maximum_mods",) if effective_min and effective_max and effective_min > effective_max else ()
-    return Requirements(themes=tuple(dict.fromkeys(detected_themes)), required_features=tuple(dict.fromkeys(required)), forbidden_features=tuple(dict.fromkeys(forbidden)), minimum_mods=effective_min, maximum_mods=effective_max, minimum_downloads=max(0, effective_downloads), multiplayer=bool(re.search(r"multiplayer|server|samen spelen", text)), warnings=warnings)
+    return Requirements(themes=tuple(dict.fromkeys(detected_themes)), required_features=tuple(dict.fromkeys(required)), forbidden_features=tuple(dict.fromkeys(forbidden)), minimum_mods=effective_min, maximum_mods=effective_max, minimum_downloads=max(0, effective_downloads), multiplayer=bool(re.search(r"multiplayer|server|samen spelen", text)) or "multiplayer" in advanced.get("gameplay_style", []), warnings=warnings)
 
 
 def theme_matches(mod_text: str, requirements: Requirements) -> bool:
