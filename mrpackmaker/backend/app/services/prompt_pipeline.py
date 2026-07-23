@@ -108,7 +108,7 @@ def optimize_prompt(prompt: str, *, minecraft_version: str, loader: str, theme: 
     if intent.forbidden_features: constraints.append(f"avoid: {', '.join(intent.forbidden_features)}")
     if intent.multiplayer: constraints.append("prefer multiplayer and server-compatible content")
     content_signals = _content_signals(original)
-    constraints.extend(CONTENT_INTENT_CONSTRAINTS[item] for item in CONTENT_INTENT_CONSTRAINTS if item in content_signals or item in intent.gameplay_styles)
+    constraints.extend(CONTENT_INTENT_CONSTRAINTS[item] for item in CONTENT_INTENT_CONSTRAINTS if item in content_signals)
     constraints.extend(f"intent: {item}" for item in intent.themes + intent.gameplay_styles)
     constraints.extend(f"resolve ambiguity: {error}" for error in errors)
     priorities = tuple(dict.fromkeys((performance_preference, "compatibility", "stability", "user intent")))
