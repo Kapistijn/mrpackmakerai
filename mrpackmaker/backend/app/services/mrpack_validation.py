@@ -7,7 +7,7 @@ from app.models.project import Project
 from app.schemas.mod import ModEntry
 from app.services.mod_resolver import mod_identity
 from app.services.mrpack_paths import is_safe_install_path,validate_install_path
-ALLOWED_DOWNLOAD_HOSTS=('cdn.modrinth.com','github.com','raw.githubusercontent.com','objects.githubusercontent.com','gitlab.com','codeberg.org','cdn.curseforge.com','media.forgecdn.net','edge.forgecdn.net')
+ALLOWED_DOWNLOAD_HOSTS=('cdn.modrinth.com','github.com','raw.githubusercontent.com','objects.githubusercontent.com','gitlab.com','codeberg.org','cdn.curseforge.com','media.forgecdn.net')
 @dataclass(frozen=True)
 class ExportIssue: code:str;message:str
 class MrpackValidationError(ValueError):
@@ -37,9 +37,7 @@ def validate_export_inputs(project:Project,mods:list[ModEntry])->list[ExportIssu
   seen_ids[identity]=key
   if not mod.file_name:issues.append(ExportIssue('file_missing',f'{mod.name} has no resolved file.'));continue
   if not _safe_mod_filename(mod.file_name):
-   issues.append(ExportIssue('unsafe_file_name',f'{mod.name} has an unsafe file name.'))
-   issues.append(ExportIssue('unsafe_install_path',f'{mod.name} has an unsupported install path.'))
-   continue
+   issues.append(ExportIssue('unsafe_file_name',f'{mod.name} has an unsafe file name.'));issues.append(ExportIssue('unsafe_install_path',f'{mod.name} has an unsupported install path.'));continue
   path=install_path_for(mod)
   if not path or not is_safe_install_path(path):issues.append(ExportIssue('unsafe_install_path',f'{mod.name} has an unsupported install path.'));continue
   if path in seen_paths:issues.append(ExportIssue('duplicate_file',f"Multiple mods use '{path}'."))
