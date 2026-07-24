@@ -11,7 +11,7 @@ from app.models.pack_analysis import PackAnalysis
 from app.models.pack_snapshot import PackSnapshot
 from app.services.pack_analysis import persist_analysis
 from app.services.pack_snapshots import list_snapshots,restore_snapshot
-from app.services.modpack import repair_project_dependencies
+from app.api.routes.modpack import repair_project_dependencies
 from app.services.compatibility import CompatibilityService
 from app.services.modrinth import ModrinthClient
 from app.services.curseforge import CurseForgeClient
@@ -49,8 +49,7 @@ async def snapshots(project_id:int,db:AsyncSession=Depends(get_db)):
 async def restore(project_id:int,snapshot_id:int,db:AsyncSession=Depends(get_db)):
  project=await _project(project_id,db);snapshot=await db.get(PackSnapshot,snapshot_id)
  if not snapshot or snapshot.project_id!=project_id:raise HTTPException(status_code=404,detail='Snapshot not found')
- await restore_snapshot(db,project,snapshot)
- await repair_project_dependencies(project,db)
+ await restore_snapshot(db,project,snapshot);await repair_project_dependencies(project,db)
  service=CompatibilityService(modrinth=ModrinthClient(config.apis.modrinth_key),curseforge=CurseForgeClient(config.apis.curseforge_key))
  try:report=await service.check_project(project)
  finally:await service.close()
