@@ -32,3 +32,9 @@ class ModEntry(BaseModel):
  dependencies:list[ModDependency]=Field(default_factory=list)
  project_url:str=''
  install_path:str|None=None
+class ModSearchResponse(BaseModel):
+ results:list[ModEntry]=Field(default_factory=list)
+ total:int=0
+ modrinth_available:bool=False
+ curseforge_available:bool=False
+ available_sources:dict[str,bool]=Field(default_factory=dict)
