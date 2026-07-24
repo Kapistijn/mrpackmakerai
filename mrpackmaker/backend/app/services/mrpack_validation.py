@@ -1,4 +1,4 @@
-"""Strict validation shared by compatibility checks, import, and export."""
+"""Strict validation shared by compatibility checks and MRPack export."""
 from __future__ import annotations
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -6,12 +6,14 @@ from app.models.project import Project
 from app.schemas.mod import ModEntry
 from app.services.mod_resolver import mod_identity
 from app.services.mrpack_paths import is_safe_install_path,validate_install_path
-ALLOWED_DOWNLOAD_HOSTS=('cdn.modrinth.com','github.com','raw.githubusercontent.com','objects.githubusercontent.com','gitlab.com','codeberg.org')
+ALLOWED_DOWNLOAD_HOSTS=('cdn.modrinth.com','github.com','raw.githubusercontent.com','objects.githubusercontent.com','gitlab.com','codeberg.org','cdn.curseforge.com','media.forgecdn.net','edge.forgecdn.net')
 @dataclass(frozen=True)
-class ExportIssue: code:str; message:str
+class ExportIssue: code:str;message:str
 class MrpackValidationError(ValueError):
- def __init__(self,issues:list[ExportIssue]): self.issues=issues;super().__init__('; '.join(i.message for i in issues))
+ def __init__(self,issues:list[ExportIssue]):self.issues=issues;super().__init__('; '.join(i.message for i in issues))
 def mod_key(mod:ModEntry)->str:return f'{mod.source}:{mod.id}'
+def _safe_mod_filename(filename:str)->bool:
+ return is_safe_install_path(f'mods/{filename}')
 def install_path_for(mod:ModEntry)->str|None:
  if not mod.file_name:return None
  explicit=getattr(mod,'install_path',None)
@@ -34,6 +36,7 @@ def validate_export_inputs(project:Project,mods:list[ModEntry])->list[ExportIssu
   if previous and previous!=key:issues.append(ExportIssue('duplicate_project',f"'{mod.name}' duplicates project '{previous}' across catalog sources."))
   seen_ids[identity]=key
   if not mod.file_name:issues.append(ExportIssue('file_missing',f'{mod.name} has no resolved file.'));continue
+  if not _safe_mod_filename(mod.file_name):issues.append(ExportIssue('unsafe_file_name',f'{mod.name} has an unsafe file name.'));continue
   path=install_path_for(mod)
   if not path or not is_safe_install_path(path):issues.append(ExportIssue('unsafe_install_path',f'{mod.name} has an unsupported install path.'));continue
   if path in seen_paths:issues.append(ExportIssue('duplicate_file',f"Multiple mods use '{path}'."))
