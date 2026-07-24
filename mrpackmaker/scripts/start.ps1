@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
 Set-Location $Root
-$Version = '2.5.5'
+$Version = '2.5.6'
 $Backend = Join-Path $Root 'backend'
 $BackendRun = Join-Path $Backend 'run.py'
 $VenvPython = Join-Path $Root 'venv\Scripts\python.exe'
@@ -20,8 +20,6 @@ function Invoke-NativeLogged([string]$FilePath,[string[]]$ArgumentList,[string]$
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $FilePath; $psi.WorkingDirectory = $WorkingDirectory; $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
-    # This replaces the old inline 2>&1 | Tee-Object pipeline: stderr is
-    # captured explicitly, so normal INFO output never becomes a PowerShell error.
     $psi.Arguments = (($ArgumentList | ForEach-Object { Quote-NativeArgument $_ }) -join ' ')
     $process = New-Object System.Diagnostics.Process; $process.StartInfo = $psi; [void]$process.Start()
     $stdout = $process.StandardOutput.ReadToEndAsync(); $stderr = $process.StandardError.ReadToEndAsync(); $process.WaitForExit()
