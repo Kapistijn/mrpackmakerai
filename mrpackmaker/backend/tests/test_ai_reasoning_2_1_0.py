@@ -52,13 +52,9 @@ def test_mod_memory_contains_evidence_risk_and_reasoning():
 
 
 def test_critique_finds_missing_overlap_and_performance_risks():
+    mods = [mod(f"Terrain {index}", ("worldgen",)) for index in range(30)]
     result = critique_pack(
-        [
-            mod("Terrain A", ("worldgen",)),
-            mod("Terrain B", ("worldgen",)),
-            mod("Terrain C", ("worldgen",)),
-            mod("Terrain D", ("worldgen",)),
-        ],
+        mods,
         ["automation", "world generation"],
         ram_gb=4,
         fps_target=120,
