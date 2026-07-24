@@ -1,17 +1,28 @@
 # Changelog
 
-## 1.9.0
+## 2.5.0
 
-AI modpack development environment layered on top of the stable 1.8.x pipeline.
+### Hardening fixes
 
-- Added approval-gated AI Modpack Editor with natural-language change planning.
-- Added direct catalog discovery and ranked recommendations using the existing resolver/scoring boundaries.
-- Added additive MRPack import that creates an editable project from `modrinth.index.json`.
-- Added crash analysis, repair reports and conflict-resolution options.
-- Added additive change history, AI request, import and repair-report persistence.
-- Added editor API and frontend page without replacing the existing generator/builder flow.
-- Added regression coverage for import, edit planning, repair, conflicts and legacy projects.
+- Added 20 deterministic boundary fixes covering invalid ports, URLs, booleans, limits, timeouts, retry delays, filenames, traversal, catalog metadata, dependency keys/cycles, malformed JSON, secret redaction, error truncation, cache expiry, and progress bounds.
+- Added regression tests for every hardening rule, including empty provider/catalog responses and corrupted configuration values.
+- Kept startup/import diagnostics from 2.1.2.1 and verified both backend and frontend CI paths.
 
-## 1.8.8
+### Improvements
 
-Pipeline integrity fixes for the 1.8.7 review blockers.
+- Stable de-duplication helper for catalog and generated lists.
+- Deterministic config fingerprint that excludes secrets.
+- Degraded health payload when the AI provider is unreachable.
+- Evidence/risk confidence scoring helper for AI explanations.
+- Bounded progress payloads for reliable UI consumers.
+
+## 2.1.2.1
+
+- Restored deterministic CI installation and removed the accidental lockfile/CI churn from the startup hotfix.
+
+## 2.1.2
+
+- Fixed the crash immediately after installer step 7/7.
+- Corrected backend import resolution from `backend/run.py`.
+- Made `start.bat` use absolute paths and verify the backend import before opening the browser.
+- Added `startup-error.log` output and preserved the real traceback when the server exits.

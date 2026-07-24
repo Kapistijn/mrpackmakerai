@@ -1,4 +1,5 @@
 """Entry point for running the MrPackMaker backend server."""
+from __future__ import annotations
 
 import os
 import sys
@@ -6,16 +7,20 @@ from pathlib import Path
 
 import uvicorn
 
-# Add parent directory to path so we can import app
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# run.py is inside backend/ and app/ is a sibling of this file.
+# The old parent.parent path pointed at the repository root, so the installer
+# completed successfully and the server crashed immediately afterwards.
+BACKEND_DIR = Path(__file__).resolve().parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
-if __name__ == "__main__":
-    # Bind to loopback by default. This is a local desktop app with no
-    # authentication, and ARCHITECTURE.md explicitly warns against exposing it
-    # on the network. Users who intentionally want LAN access can opt in with
-    # MRPACK_HOST=0.0.0.0 (and optionally MRPACK_PORT).
+
+def main() -> None:
     host = os.getenv("MRPACK_HOST", "127.0.0.1")
-    port = int(os.getenv("MRPACK_PORT", "8000"))
+    try:
+        port = int(os.getenv("MRPACK_PORT", "8000"))
+    except ValueError as exc:
+        raise SystemExit("MRPACK_PORT must be a number, for example 8000") from exc
     uvicorn.run(
         "app.main:app",
         host=host,
@@ -23,3 +28,7 @@ if __name__ == "__main__":
         reload=False,
         log_level="info",
     )
+
+
+if __name__ == "__main__":
+    main()
