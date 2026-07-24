@@ -65,13 +65,10 @@ class AIOrchestrator:
     loader,mc=LoaderType(project.loader),project.minecraft_version;prompt=project.generation_prompt or project.description
     req=parse_requirements(prompt,theme=project.theme,minimum_mods=project.minimum_mods,maximum_mods=project.maximum_mods,minimum_downloads=project.minimum_downloads,target_ram_gb=project.target_ram_gb,target_fps=project.target_fps,shader_support=project.shader_support,performance_preference=project.performance_preference,visual_quality=project.shader_quality,resourcepack_support=project.resourcepack_support)
     if req.warnings:raise RuntimeError('; '.join(req.warnings))
-    intent=analyze_intent(prompt,theme=project.theme,forbidden=req.forbidden_features)
-    profile=build_pack_profile(req)
-    hints=selection_hints(project)
-    seed=project.id ^ int(datetime.now(timezone.utc).timestamp())
-    brief=optimize_prompt(prompt,minecraft_version=mc,loader=loader.value,theme=project.theme,difficulty=project.difficulty,performance_preference=project.performance_preference)
-    design=build_pack_design(req)
-    queries=list(dict.fromkeys(self._fallback_queries(project,prompt)+list(req.required_features)+list(intent.categories)+([] if hints['low_hardware'] else shader_loader_queries(profile,loader.value)))
+    intent=analyze_intent(prompt,theme=project.theme,forbidden=req.forbidden_features);profile=build_pack_profile(req);hints=selection_hints(project);seed=project.id ^ int(datetime.now(timezone.utc).timestamp());brief=optimize_prompt(prompt,minecraft_version=mc,loader=loader.value,theme=project.theme,difficulty=project.difficulty,performance_preference=project.performance_preference);design=build_pack_design(req)
+    query_parts=[self._fallback_queries(project,prompt),list(req.required_features),list(intent.categories)]
+    if not hints['low_hardware']:query_parts.append(shader_loader_queries(profile,loader.value))
+    queries=list(dict.fromkeys([item for part in query_parts for item in part]))
     target=max(req.minimum_mods or 40,min(profile.max_content_mods,req.maximum_mods or profile.max_content_mods))
     await self._emit(project_id,AIProgressEvent(step=1,message='Planning the pack...',data={'intent':intent.to_dict(),'profile':profile.as_pack_info(),'hardware_hints':hints}),run)
     if use_ai and provider:
@@ -81,13 +78,9 @@ class AIOrchestrator:
       if analysis.target_mod_count:target=max(req.minimum_mods or 1,min(profile.max_content_mods,analysis.target_mod_count))
       queries=list(dict.fromkeys([*queries,*(analysis.gameplay_style or []),*(analysis.required_mods or [])]))
       try:
-       ai_intent=await provider.chat_json(system_prompt=brief.system_prompt,user_prompt=brief.as_user_prompt(),schema=IntentAnalysisSchema)
-       intent=merge_ai_intent(intent,goal=ai_intent.goal or None,categories=ai_intent.categories,avoid=ai_intent.avoid,realism_focus=ai_intent.realism_focus)
-       queries=list(dict.fromkeys([*queries,*intent.categories]))
+       ai_intent=await provider.chat_json(system_prompt=brief.system_prompt,user_prompt=brief.as_user_prompt(),schema=IntentAnalysisSchema);intent=merge_ai_intent(intent,goal=ai_intent.goal or None,categories=ai_intent.categories,avoid=ai_intent.avoid,realism_focus=ai_intent.realism_focus);queries=list(dict.fromkeys([*queries,*intent.categories]))
       except AIProviderError:pass
-      gameplay=await provider.chat_json(system_prompt=brief.system_prompt,user_prompt=f'{brief.as_user_prompt()}\n{analysis.model_dump_json()}',schema=GameplayAnalysis)
-      plan=await provider.chat_json(system_prompt=brief.system_prompt,user_prompt=f'{brief.as_user_prompt()}\n{gameplay.model_dump_json()}',schema=CategoryPlan)
-      queries=list(dict.fromkeys([*plan.search_queries,*queries]))
+      gameplay=await provider.chat_json(system_prompt=brief.system_prompt,user_prompt=f'{brief.as_user_prompt()}\n{analysis.model_dump_json()}',schema=GameplayAnalysis);plan=await provider.chat_json(system_prompt=brief.system_prompt,user_prompt=f'{brief.as_user_prompt()}\n{gameplay.model_dump_json()}',schema=CategoryPlan);queries=list(dict.fromkeys([*plan.search_queries,*queries]))
      except AIProviderError as exc:logger.warning('AI planning failed: %s',exc)
     candidates=await self._gather_candidates(registry,queries,mc,loader,req,seed)
     if not candidates:raise RuntimeError('No compatible mods matched the selected requirements')
@@ -115,9 +108,7 @@ class AIOrchestrator:
     try:compatibility_report=await compatibility.check_project(project)
     finally:await compatibility.close()
     if not compatibility_report.export_ready:raise RuntimeError('Compatibility gate failed: '+'; '.join(compatibility_report.errors))
-    await persist_analysis(db,project,'generation')
-    await db.commit()
-    await self._emit(project_id,AIProgressEvent(step=7,message=f'Generation complete: {len(resolved)} mods.',status='complete',data={'mod_count':len(resolved),'dependency_repair':repair_status,'compatibility':compatibility_report.model_dump(mode='json'),'hardware_hints':hints}),run)
+    await persist_analysis(db,project,'generation');await db.commit();await self._emit(project_id,AIProgressEvent(step=7,message=f'Generation complete: {len(resolved)} mods.',status='complete',data={'mod_count':len(resolved),'dependency_repair':repair_status,'compatibility':compatibility_report.model_dump(mode='json'),'hardware_hints':hints}),run)
   except asyncio.CancelledError:await self._mark_failed(project_id,'Cancelled by user');await self._emit(project_id,AIProgressEvent(step=0,message='Generation cancelled.',status='cancelled'));raise
   except Exception as exc:logger.exception('Generation failed for project %d',project_id);await self._mark_failed(project_id,str(exc));await self._emit(project_id,AIProgressEvent(step=0,message=f'Generation failed: {exc}',status='error'))
   finally:
