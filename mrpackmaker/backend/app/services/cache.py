@@ -23,11 +23,17 @@ class TTLCache(Generic[T]):
   while len(self._store)>self._max_entries:self._store.popitem(last=False)
  def clear(self)->None:self._store.clear()
 class AsyncCoalescingCache(Generic[T]):
- """One shared result per key, including concurrent callers."""
- def __init__(self,ttl:int=DEFAULT_TTL,max_entries:int=DEFAULT_MAX_ENTRIES)->None:self._values=TTLCache[T](ttl,max_entries);self._inflight:dict[str,asyncio.Future[T]]={};self._lock=asyncio.Lock()
+ """One shared result per key, safe for concurrent callers and test loops."""
+ def __init__(self,ttl:int=DEFAULT_TTL,max_entries:int=DEFAULT_MAX_ENTRIES)->None:
+  self._values=TTLCache[T](ttl,max_entries);self._inflight:dict[str,asyncio.Future[T]]={};self._lock:asyncio.Lock|None=None;self._loop:asyncio.AbstractEventLoop|None=None
+ def _ensure_loop(self)->None:
+  loop=asyncio.get_running_loop()
+  if self._loop is not loop:
+   self._loop=loop;self._lock=asyncio.Lock();self._inflight={}
  async def get_or_fetch(self,key:str,fetch:Callable[[],Awaitable[T]])->T:
-  cached=self._values.get(key)
+  self._ensure_loop();cached=self._values.get(key)
   if cached is not None:return cached
+  assert self._lock is not None
   async with self._lock:
    cached=self._values.get(key)
    if cached is not None:return cached
