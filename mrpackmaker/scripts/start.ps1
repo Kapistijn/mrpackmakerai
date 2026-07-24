@@ -15,6 +15,7 @@ $Port = 0
 if (-not [int]::TryParse($PortText, [ref]$Port) -or $Port -lt 1 -or $Port -gt 65535) { Write-Host "ERROR: MRPACK_PORT must be between 1 and 65535 (received '$PortText')." -ForegroundColor Red; Read-Host 'Press Enter to close'; exit 1 }
 $Url = "http://localhost:$Port"
 function Fail([string]$Message) { Write-Host "`nERROR: $Message" -ForegroundColor Red; Write-Host "Full log: $LogFile" -ForegroundColor Yellow; Read-Host 'Press Enter to close'; exit 1 }
+function Quote-NativeArgument([string]$Value) { return '"' + ($Value -replace '(\\*)"','$1$1\"' -replace '(\\+)$','$1$1') + '"' }
 function Invoke-NativeLogged([string]$FilePath,[string[]]$ArgumentList,[string]$WorkingDirectory) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $FilePath
@@ -22,7 +23,7 @@ function Invoke-NativeLogged([string]$FilePath,[string[]]$ArgumentList,[string]$
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
-    foreach ($argument in $ArgumentList) { [void]$psi.ArgumentList.Add($argument) }
+    $psi.Arguments = (($ArgumentList | ForEach-Object { Quote-NativeArgument $_ }) -join ' ')
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $psi
     [void]$process.Start()
@@ -45,7 +46,7 @@ $PyVersion = ((& $VenvPython --version 2>&1) | Out-String).Trim()
 Write-Host "Python: $PyVersion`nHost: $BindHost`nPort: $Port`nURL: $Url" -ForegroundColor Gray
 if ((Test-Path $LogFile) -and ((Get-Item $LogFile).Length -gt 5MB)) { Remove-Item $LogFile -Force }
 "MrPackMaker $Version startup log - $(Get-Date -Format o)" | Out-File $LogFile -Encoding utf8
-Write-Host '`nChecking backend startup...' -ForegroundColor White
+Write-Host "`nChecking backend startup..." -ForegroundColor White
 $importExit = Invoke-NativeLogged $VenvPython @('-c','import app.main; print(1)') $Backend
 if ($importExit -ne 0) { Fail 'Backend import failed. See the traceback above and in the log.' }
 Write-Host 'Backend import OK' -ForegroundColor Green
