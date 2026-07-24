@@ -1,6 +1,7 @@
 """Strict validation shared by compatibility checks and MRPack export."""
 from __future__ import annotations
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from urllib.parse import urlparse
 from app.models.project import Project
 from app.schemas.mod import ModEntry
@@ -13,7 +14,9 @@ class MrpackValidationError(ValueError):
  def __init__(self,issues:list[ExportIssue]):self.issues=issues;super().__init__('; '.join(i.message for i in issues))
 def mod_key(mod:ModEntry)->str:return f'{mod.source}:{mod.id}'
 def _safe_mod_filename(filename:str)->bool:
- return is_safe_install_path(f'mods/{filename}')
+ if not isinstance(filename,str) or not filename or '\\' in filename:return False
+ path=PurePosixPath(filename)
+ return len(path.parts)==1 and path.name==filename and filename not in {'.','..'}
 def install_path_for(mod:ModEntry)->str|None:
  if not mod.file_name:return None
  explicit=getattr(mod,'install_path',None)
@@ -49,7 +52,7 @@ def validate_export_inputs(project:Project,mods:list[ModEntry])->list[ExportIssu
   for digest in (mod.hashes.sha1,mod.hashes.sha512):
    if digest:
     previous_hash=seen_hashes.get(digest.lower())
-    if previous_hash and previous_hash!=key:issues.append(ExportIssue('duplicate_hash',f"{mod.name} shares a file hash with '{previous_hash}'."))
+    if previous_hash and previous_hash!=key:issues.append(ExportIssue('duplicate_hash',f'{mod.name} shares a file hash with {previous_hash}.'))
     seen_hashes[digest.lower()]=key
   if not (mod.hashes.sha1 or mod.hashes.sha512):issues.append(ExportIssue('hash_missing',f'{mod.name} has no SHA-1 or SHA-512 hash.'))
   if not mod.file_size or mod.file_size<=0:issues.append(ExportIssue('size_missing',f'{mod.name} has no valid file size.'))
