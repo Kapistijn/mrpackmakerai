@@ -1,12 +1,9 @@
 # Changelog
 
-## 2.5.2
+## 2.5.3
 
-- Fixed the post-install startup crash caused by the missing `ModSearchResponse` schema.
-- Added an application-import regression test that imports every registered route.
-- Restored the typed `/api/mods/search` response contract.
-
-## 2.5.1
-
-- Restored the PowerShell spinner/loading screen.
-- Added explicit installer failure output and backend import checks.
+- Fixed startup import crash by restoring ModSearchResponse.
+- Fixed Windows MRPack permission errors by closing upload temp files before parsing.
+- Added per-package installer progress such as Installing fastapi (1/12), with spinner and full logs.
+- Added live server logs in start.bat and preserved startup-error.log.
+- Added Forge dependency diagnostics and non-fatal dropped-mod reporting where unresolved dependencies make a mod incompatible.
