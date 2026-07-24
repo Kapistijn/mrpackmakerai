@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.5.4
+
+- Fixed the launcher crash `The ampersand (&) character is not allowed` (`AmpersandNotAllowed`). `start.bat` piped the server through PowerShell inline as `2^>^&1 | Tee-Object`, but cmd does not strip the `^` carets inside a double-quoted `-Command`, so PowerShell received them verbatim and refused to start. Startup now runs from a real `scripts/start.ps1` invoked with `-File`, so `2>&1 | Tee-Object` parses normally and live logs stream correctly.
+- Fixed the stale frontend version (`package.json` was still `2.5.0` while the backend was `2.5.3`).
+- Added a single source of truth for the version (`app.__version__`) used by the API, `/api/health`, the installer, and the launcher, so versions can no longer drift.
+- Installer now prints the detected Python and Node versions (`Python check: ...   Node check: ...`) and an explicit `done` marker for the virtual-environment and config steps.
+- Installer and launcher now show a clear version banner.
+- Launcher startup banner now shows the version, detected Python version, host, port, and target URL, plus a `Press Ctrl+C to stop` hint.
+- `/api/health` now reports the running application version for easier diagnostics.
+- Startup log rotation (>5 MB) and clean live log streaming carried into `start.ps1`.
+- Added regression tests asserting the ampersand crash pattern is gone, the launcher streams logs cleanly, and the version is single-sourced and bumped.
+
 ## 2.5.3
 
 - Fixed startup import crash by restoring `ModSearchResponse`.
