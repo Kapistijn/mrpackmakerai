@@ -5,6 +5,7 @@ if not exist "venv\Scripts\python.exe" (echo Virtual environment not found. Run 
 if not exist "frontend\dist\index.html" (echo Frontend build not found. Run installer.vbs first.& pause& exit /b 1)
 set "PYTHON=%~dp0venv\Scripts\python.exe"
 set "STARTUP_LOG=%~dp0startup-error.log"
+if exist "%STARTUP_LOG%" forfiles /p "%~dp0" /m startup-error.log /c "cmd /c if @fsize GTR 5242880 del @path" >nul 2>&1
 > "%STARTUP_LOG%" echo MrPackMaker startup log %DATE% %TIME%
 echo Checking backend startup...
 cd /d "%~dp0backend"

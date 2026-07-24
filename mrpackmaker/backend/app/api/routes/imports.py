@@ -10,11 +10,13 @@ from app.models.enums import ProjectStatus,ShaderSupport
 from app.services.modpack_importer import import_manifest
 from app.services.pack_analysis import persist_analysis
 router=APIRouter()
+MAX_MRPACK_BYTES=512*1024*1024
 @router.post('')
 async def import_mrpack(file:UploadFile=File(...),db:AsyncSession=Depends(get_db)):
  if not (file.filename or '').lower().endswith('.mrpack'):raise HTTPException(status_code=400,detail='Only .mrpack files are supported')
  data=await file.read()
  if not data:raise HTTPException(status_code=400,detail='The uploaded MRPack is empty')
+ if len(data)>MAX_MRPACK_BYTES:raise HTTPException(status_code=413,detail='MRPack exceeds the 512 MB upload limit')
  fd,path=tempfile.mkstemp(suffix='.mrpack');os.close(fd)
  try:
   with open(path,'wb') as tmp:tmp.write(data)
