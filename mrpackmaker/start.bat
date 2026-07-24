@@ -1,5 +1,5 @@
 @echo off
-REM Thin launcher for the PowerShell start engine (2.5.4).
+REM Thin launcher for the PowerShell start engine (2.5.5).
 REM The startup logic lives in scripts\start.ps1 so we avoid the cmd/PowerShell
 REM quoting bug that crashed the old inline command with an invalid escaped
 REM redirection and the AmpersandNotAllowed parser error.
