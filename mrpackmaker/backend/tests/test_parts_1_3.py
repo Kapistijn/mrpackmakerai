@@ -16,7 +16,8 @@ def test_navigation_keeps_core_sections_visible_without_project():
     text = (ROOT / 'frontend' / 'src' / 'components' / 'Layout.tsx').read_text(encoding='utf-8')
     for label in ('Dashboard', 'New Project', 'Projects', 'Advanced', 'Intelligence', 'Settings', 'API'):
         assert label in text
-    assert "projectPath='/'" in text or "projectPath}/" in text
+    assert "const projectPath=projectId?`/project/${projectId}`:'/'" in text
+    assert 'onClick={e=>{if(!projectId)e.preventDefault()}}' in text
 
 
 def test_intelligence_import_stays_on_page_and_loads_report():
