@@ -2,17 +2,17 @@
 # MrPackMaker launcher engine.
 #
 # Why this exists: the old start.bat piped the server through PowerShell inline
-# with "2^>^&1 | Tee-Object". cmd.exe does NOT strip the ^ carets inside a
-# double-quoted -Command string, so PowerShell received "2^>^&1" verbatim and
-# crashed with:
-#   The ampersand (&) character is not allowed. ... AmpersandNotAllowed
+# with a cmd-escaped redirection inside a double-quoted command. cmd.exe did
+# not remove the escape characters before PowerShell parsed the command, so
+# PowerShell treated the ampersand as a reserved operator and refused to start.
 # Running the logic from a real .ps1 file with -File removes all cmd quoting,
-# so "2>&1 | Tee-Object" is parsed normally and live logs stream correctly.
+# so the normal stderr-to-output pipeline parses correctly and live logs stream.
 #
-# IMPORTANT: uvicorn logs to stderr. With 2>&1 those lines become error records,
-# and under $ErrorActionPreference='Stop' PowerShell would throw NativeCommandError
-# on the first log line and kill the server. We therefore use 'Continue' for the
-# native streaming sections and drive control flow from $LASTEXITCODE instead.
+# IMPORTANT: uvicorn logs to stderr. With stderr redirected into the pipeline,
+# those lines become error records, and under Stop PowerShell would throw
+# NativeCommandError on the first log line and kill the server. We therefore use
+# Continue for the native streaming sections and drive control flow from
+# LASTEXITCODE instead.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -51,9 +51,8 @@ Write-Host ("URL:     {0}" -f $Url) -ForegroundColor Gray
 if ((Test-Path $LogFile) -and ((Get-Item $LogFile).Length -gt 5MB)) { Remove-Item $LogFile -Force }
 "MrPackMaker $Version startup log - $(Get-Date -Format o)" | Out-File $LogFile -Encoding utf8
 
-# From here on the native processes write to stderr on purpose (tracebacks,
-# uvicorn logs). Switch to Continue so 2>&1 streaming never throws; we check
-# $LASTEXITCODE explicitly for real failures.
+# From here on native processes write diagnostics to stderr on purpose. Switch
+# to Continue so streaming never throws; check LASTEXITCODE for real failures.
 $ErrorActionPreference = 'Continue'
 
 Write-Host "`nChecking backend startup..." -ForegroundColor White
