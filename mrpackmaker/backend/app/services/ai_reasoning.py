@@ -10,12 +10,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Iterable
 
 from app.schemas.mod import ModEntry
-from app.services.pack_intelligence import (
-    performance_estimate,
-    quality_report,
-    synergy_report,
-)
-
+from app.services.pack_intelligence import performance_estimate, quality_report, synergy_report
 
 MAX_ALTERNATIVES = 3
 
@@ -31,7 +26,11 @@ _ROLE_ALIASES = {
     "spells": "magic",
     "tech": "technology",
     "machines": "automation",
-    "farming": "farming",
+    "qol": "quality_of_life",
+    "quality of life": "quality_of_life",
+    "convenience": "quality_of_life",
+    "utility": "quality_of_life",
+    "minimap": "quality_of_life",
 }
 
 _ROLE_SIGNALS: tuple[tuple[tuple[str, ...], str], ...] = (
@@ -46,6 +45,7 @@ _ROLE_SIGNALS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("boss", "combat", "mob", "monster", "enemy"), "combat"),
     (("weather", "season", "temperature", "survival", "hunger", "thirst"), "survival"),
     (("sound", "ambient", "atmosphere", "immersion", "lighting"), "immersion"),
+    (("qol", "quality of life", "convenience", "utility", "waypoint", "minimap", "recipe", "interface"), "quality_of_life"),
 )
 
 
@@ -76,9 +76,7 @@ def normalize_role(value: str) -> str:
 
 
 def _text(mod: ModEntry) -> str:
-    return " ".join(
-        (mod.name or "", mod.slug or "", mod.summary or "", *mod.categories)
-    ).casefold()
+    return " ".join((mod.name or "", mod.slug or "", mod.summary or "", *mod.categories)).casefold()
 
 
 def roles_for(mod: ModEntry) -> tuple[str, ...]:
@@ -144,44 +142,17 @@ def _compatibility(mod: ModEntry) -> str:
     return "needs validation"
 
 
-def build_mod_memory(
-    mod: ModEntry,
-    reason: str = "",
-    confidence: int = 70,
-    alternatives: Iterable[str] = (),
-    requested_roles: Iterable[str] = (),
-) -> dict[str, Any]:
+def build_mod_memory(mod: ModEntry, reason: str = "", confidence: int = 70, alternatives: Iterable[str] = (), requested_roles: Iterable[str] = ()) -> dict[str, Any]:
     """Build a JSON-safe, evidence-backed memory record for a mod."""
     requested = {normalize_role(role) for role in requested_roles if role}
     roles = roles_for(mod)
     match = len(set(roles).intersection(requested))
     evidence = _evidence_for(mod)
     if not reason:
-        reason = (
-            f"Matches requested roles: {', '.join(roles)}"
-            if match
-            else "Selected as a compatible supporting mod"
-        )
+        reason = f"Matches requested roles: {', '.join(roles)}" if match else "Selected as a compatible supporting mod"
     evidence_bonus = min(15, len(evidence) * 2)
     bounded_confidence = max(0, min(99, int(confidence) + evidence_bonus))
-    return asdict(
-        ModMemory(
-            name=mod.name,
-            source=str(mod.source),
-            categories=tuple(mod.categories),
-            roles=roles,
-            dependencies=tuple(dep.project_id for dep in mod.dependencies),
-            downloads=mod.downloads,
-            performance_impact=_performance_impact(mod),
-            compatibility=_compatibility(mod),
-            reason=reason,
-            confidence=bounded_confidence,
-            alternatives=tuple(dict.fromkeys(name for name in alternatives if name))[:MAX_ALTERNATIVES],
-            evidence=evidence,
-            intent_match=min(100, match * 25),
-            risk_flags=_risk_flags_for(mod),
-        )
-    )
+    return asdict(ModMemory(name=mod.name, source=str(mod.source), categories=tuple(mod.categories), roles=roles, dependencies=tuple(dep.project_id for dep in mod.dependencies), downloads=mod.downloads, performance_impact=_performance_impact(mod), compatibility=_compatibility(mod), reason=reason, confidence=bounded_confidence, alternatives=tuple(dict.fromkeys(name for name in alternatives if name))[:MAX_ALTERNATIVES], evidence=evidence, intent_match=min(100, match * 25), risk_flags=_risk_flags_for(mod)))
 
 
 def missing_categories(mods: list[ModEntry], requested: Iterable[str]) -> list[str]:
@@ -200,12 +171,7 @@ def coverage_report(mods: list[ModEntry], requested: Iterable[str]) -> dict[str,
     covered = sorted({role for mod in mods for role in roles_for(mod)})
     missing = missing_categories(mods, normalized)
     ratio = 1.0 if not normalized else (len(normalized) - len(missing)) / len(normalized)
-    return {
-        "requested": normalized,
-        "covered": covered,
-        "missing": missing,
-        "coverage_percent": round(ratio * 100),
-    }
+    return {"requested": normalized, "covered": covered, "missing": missing, "coverage_percent": round(ratio * 100)}
 
 
 def recommendation_score(mod: ModEntry, requested_roles: Iterable[str]) -> float:
@@ -218,37 +184,16 @@ def recommendation_score(mod: ModEntry, requested_roles: Iterable[str]) -> float
     return round(match * 0.45 + artifact * 0.25 + hashed * 0.15 + popularity * 0.15, 6)
 
 
-def alternatives_for(
-    mod: ModEntry,
-    candidates: list[ModEntry],
-    limit: int = MAX_ALTERNATIVES,
-) -> list[str]:
+def alternatives_for(mod: ModEntry, candidates: list[ModEntry], limit: int = MAX_ALTERNATIVES) -> list[str]:
     """Find same-role alternatives while excluding the selected identity."""
     roles = set(roles_for(mod))
-    ranked = [
-        candidate
-        for candidate in candidates
-        if _mod_key(candidate) != _mod_key(mod)
-        and roles.intersection(roles_for(candidate))
-    ]
-    ranked.sort(
-        key=lambda candidate: (
-            recommendation_score(candidate, roles),
-            candidate.downloads,
-            candidate.name.casefold(),
-        ),
-        reverse=True,
-    )
+    ranked = [candidate for candidate in candidates if _mod_key(candidate) != _mod_key(mod) and roles.intersection(roles_for(candidate))]
+    ranked.sort(key=lambda candidate: (recommendation_score(candidate, roles), candidate.downloads, candidate.name.casefold()), reverse=True)
     return list(dict.fromkeys(candidate.name for candidate in ranked if candidate.name))[: max(0, limit)]
 
 
-def build_alternative_map(
-    selected: list[ModEntry], candidates: list[ModEntry], limit: int = MAX_ALTERNATIVES
-) -> dict[str, list[str]]:
-    return {
-        _mod_key(mod): alternatives_for(mod, candidates, limit=limit)
-        for mod in selected
-    }
+def build_alternative_map(selected: list[ModEntry], candidates: list[ModEntry], limit: int = MAX_ALTERNATIVES) -> dict[str, list[str]]:
+    return {_mod_key(mod): alternatives_for(mod, candidates, limit=limit) for mod in selected}
 
 
 def confidence_for(mod: ModEntry, requested_roles: Iterable[str]) -> int:
@@ -264,129 +209,41 @@ def _redundancy_report(mods: list[ModEntry]) -> list[dict[str, Any]]:
     for mod in mods:
         for role in roles_for(mod):
             by_role.setdefault(role, []).append(mod.name)
-    return [
-        {
-            "role": role,
-            "mods": names,
-            "reason": "Several mods serve the same role; review overlap and configuration conflicts.",
-        }
-        for role, names in sorted(by_role.items())
-        if len(names) > 3
-    ]
+    return [{"role": role, "mods": names, "reason": "Several mods serve the same role; review overlap and configuration conflicts."} for role, names in sorted(by_role.items()) if len(names) > 3]
 
 
-def critique_pack(
-    mods: list[ModEntry],
-    requested: Iterable[str],
-    *,
-    ram_gb: int | None = None,
-    fps_target: int | None = None,
-    shader_support: str | None = None,
-) -> dict[str, Any]:
+def critique_pack(mods: list[ModEntry], requested: Iterable[str], *, ram_gb: int | None = None, fps_target: int | None = None, shader_support: str | None = None) -> dict[str, Any]:
     """Produce a deterministic self-critique after candidate selection."""
     quality = quality_report(mods)
     synergy = synergy_report(mods)
-    performance = performance_estimate(
-        mods,
-        ram_gb=ram_gb,
-        fps_target=fps_target,
-        shader_support=shader_support,
-    )
+    performance = performance_estimate(mods, ram_gb=ram_gb, fps_target=fps_target, shader_support=shader_support)
     coverage = coverage_report(mods, requested)
     redundancy = _redundancy_report(mods)
     problems: list[dict[str, Any]] = []
     for category in coverage["missing"]:
-        problems.append(
-            {
-                "type": "missing_category",
-                "category": category,
-                "severity": "medium",
-                "recommendation": f"Search for more {category.replace('_', ' ')} content.",
-            }
-        )
+        problems.append({"type": "missing_category", "category": category, "severity": "medium", "recommendation": f"Search for more {category.replace('_', ' ')} content."})
     for conflict in synergy.get("conflicts", []):
-        problems.append(
-            {
-                "type": "worldgen_overlap",
-                "mods": conflict.get("mods", []),
-                "severity": "high",
-                "recommendation": "Review world-generation configs before export.",
-            }
-        )
+        problems.append({"type": "worldgen_overlap", "mods": conflict.get("mods", []), "severity": "high", "recommendation": "Review world-generation configs before export."})
     for item in redundancy:
-        problems.append(
-            {
-                "type": "redundancy",
-                "role": item["role"],
-                "mods": item["mods"],
-                "severity": "low",
-                "recommendation": item["reason"],
-            }
-        )
+        problems.append({"type": "redundancy", "role": item["role"], "mods": item["mods"], "severity": "low", "recommendation": item["reason"]})
     expected_fps = performance.get("expected_fps", {})
     if fps_target and expected_fps.get("low", fps_target) < fps_target:
-        problems.append(
-            {
-                "type": "fps_risk",
-                "severity": "high",
-                "recommendation": "Reduce heavy world-generation, entity, or shader content.",
-            }
-        )
+        problems.append({"type": "fps_risk", "severity": "high", "recommendation": "Reduce heavy world-generation, entity, or shader content."})
     if ram_gb and performance.get("ram_gb", ram_gb) > ram_gb:
-        problems.append(
-            {
-                "type": "ram_risk",
-                "severity": "high",
-                "recommendation": "Increase allocated RAM or choose a lighter variant.",
-            }
-        )
-    return {
-        "quality": quality,
-        "performance": performance,
-        "synergy": synergy,
-        "coverage": coverage,
-        "missing_categories": coverage["missing"],
-        "redundancy": redundancy,
-        "problems": problems,
-        "recommendations": list(dict.fromkeys(problem["recommendation"] for problem in problems)),
-    }
+        problems.append({"type": "ram_risk", "severity": "high", "recommendation": "Increase allocated RAM or choose a lighter variant."})
+    return {"quality": quality, "performance": performance, "synergy": synergy, "coverage": coverage, "missing_categories": coverage["missing"], "redundancy": redundancy, "problems": problems, "recommendations": list(dict.fromkeys(problem["recommendation"] for problem in problems))}
 
 
-def selection_feedback(
-    selected: list[ModEntry],
-    candidates: list[ModEntry],
-    requested: Iterable[str],
-    *,
-    ram_gb: int | None = None,
-    fps_target: int | None = None,
-    shader_support: str | None = None,
-) -> dict[str, Any]:
+def selection_feedback(selected: list[ModEntry], candidates: list[ModEntry], requested: Iterable[str], *, ram_gb: int | None = None, fps_target: int | None = None, shader_support: str | None = None) -> dict[str, Any]:
     """Summarize why the selected set won and what the next round should do."""
     requested_values = tuple(requested)
     alternatives = build_alternative_map(selected, candidates)
     reasons: dict[str, str] = {}
     confidence: dict[str, int] = {}
+    requested_set = {normalize_role(value) for value in requested_values}
     for mod in selected:
         roles = roles_for(mod)
-        overlap = sorted(set(roles).intersection({normalize_role(value) for value in requested_values}))
-        reasons[_mod_key(mod)] = (
-            f"Covers {', '.join(overlap)} with catalog-backed compatibility evidence."
-            if overlap
-            else "Adds a compatible supporting role while preserving category diversity."
-        )
+        overlap = sorted(set(roles).intersection(requested_set))
+        reasons[_mod_key(mod)] = f"Covers {', '.join(overlap)} with catalog-backed compatibility evidence." if overlap else "Adds a compatible supporting role while preserving category diversity."
         confidence[_mod_key(mod)] = confidence_for(mod, requested_values)
-    return {
-        "selected_count": len(selected),
-        "candidate_count": len(candidates),
-        "coverage": coverage_report(selected, requested_values),
-        "reasons": reasons,
-        "confidence": confidence,
-        "alternatives": alternatives,
-        "critique": critique_pack(
-            selected,
-            requested_values,
-            ram_gb=ram_gb,
-            fps_target=fps_target,
-            shader_support=shader_support,
-        ),
-    }
+    return {"selected_count": len(selected), "candidate_count": len(candidates), "coverage": coverage_report(selected, requested_values), "reasons": reasons, "confidence": confidence, "alternatives": alternatives, "critique": critique_pack(selected, requested_values, ram_gb=ram_gb, fps_target=fps_target, shader_support=shader_support)}
