@@ -1,12 +1,20 @@
 # Changelog
 
+## 2.5.4 Parts 11-13
+
+- Added a real multi-worker generation page with validated worker-count and target-mod controls, clear loading/error states, merge-round evidence and a direct builder handoff.
+- Added a Workers entry to project navigation without hiding the existing core sections.
+- Added regression coverage for the worker page route, navigation link, API contract and release verification contract.
+- Added an offline release verifier covering Python compilation, API registration, worker engine, export validation, frontend route and Windows launcher contracts.
+- CI now includes an offline verification job that depends on backend pytest and frontend build.
+- CI now parses `start.ps1` on a real Windows runner and checks that `start.bat` delegates to it.
+- External smoke gates remain explicit: real AI provider, catalog network, Windows launch with installed dependencies and MRPack round-trip.
+
 ## 2.5.4 Parts 8-10
 
 - Merge decisions now score and expose intent coverage, compatibility, performance, dependency quality, confidence, redundancy, synergy, world-generation coverage and export-input completeness.
-- Merge evidence explains why unique content from both candidates was preserved and why duplicate project identities were removed.
 - Consolidated worker catalog coalescing into the reusable bounded cache module with TTL/LRU completed-result storage.
-- Added the repository audit report covering TODO/placeholder scans, duplicate boundaries, retained service boundaries and explicit release gates.
-- Added regression tests for merge evidence, cache reuse and audit findings.
+- Added the repository audit report and regression tests.
 
 ## 2.5.4 Part 7
 
