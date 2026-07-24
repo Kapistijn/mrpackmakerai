@@ -1,4 +1,4 @@
-"""Durable, requirement-driven generation workflow with safe large-pack limits."""
+"""Durable, requirement-driven generation workflow with a transactional validation gate."""
 from __future__ import annotations
 import asyncio,json,logging
 from collections.abc import AsyncGenerator
@@ -19,6 +19,7 @@ from app.services.mod_scoring import rank_mods
 from app.services.pack_assets import shader_loader_queries
 from app.services.pack_profile import build_pack_profile
 from app.services.pack_analysis import persist_analysis
+from app.services.hardware_intelligence import selection_hints
 from app.services.prompt_pipeline import optimize_prompt
 from app.services.quality_scoring import rank_by_quality,select_quality
 from app.services.requirements import parse_requirements,theme_matches
@@ -26,6 +27,8 @@ from app.services.intelligent_planning import build_pack_design,review_pack
 from app.services.self_check import fill_missing,verify_requirements
 from app.services.modrinth import ModrinthClient
 from app.services.source_registry import ModSourceRegistry,UnknownModSourceError
+from app.services.dependency_repair import repair_project_dependencies
+from app.services.compatibility import CompatibilityService
 logger=logging.getLogger(__name__)
 TERMINAL_STATUSES={'complete','error','cancelled'}
 THEME_CATEGORIES={ThemeType.TECHNOLOGY:['technology','storage','utility'],ThemeType.ADVENTURE:['adventure','worldgen','mobs'],ThemeType.MAGIC:['magic','adventure'],ThemeType.EXPLORATION:['worldgen','adventure','utility'],ThemeType.SURVIVAL:['food','utility','storage'],ThemeType.CUSTOM:[]}
@@ -34,7 +37,7 @@ class AIOrchestrator:
  def __init__(self):self._active={};self._events={};self._final={}
  @staticmethod
  def _fallback_queries(project,prompt):
-  base=parse_requirements(prompt,theme=project.theme,minimum_mods=project.minimum_mods,maximum_mods=project.maximum_mods,minimum_downloads=project.minimum_downloads);design=build_pack_design(base);custom=(project.theme_custom or '').strip();return list(dict.fromkeys(([custom] if custom else [])+list(design.search_queries or ())+list(THEME_CATEGORIES.get(ThemeType(project.theme),()))+list(POPULAR_FALLBACK_QUERIES)))
+  base=parse_requirements(prompt,theme=project.theme,minimum_mods=project.minimum_mods,maximum_mods=project.maximum_mods,minimum_downloads=project.minimum_downloads);design=build_pack_design(base);custom=(project.theme_custom or '').strip();hints=selection_hints(project);queries=([custom] if custom else [])+list(design.search_queries or ())+list(THEME_CATEGORIES.get(ThemeType(project.theme),()))+list(POPULAR_FALLBACK_QUERIES)+hints['prefer_queries'];return [q for q in dict.fromkeys(queries) if not any(block in q.casefold() for block in hints['avoid_queries'])]
  async def _emit(self,project_id,event,run=None):
   if queue:=self._events.get(project_id):await queue.put(event)
   if event.status in TERMINAL_STATUSES:self._final[project_id]=event
@@ -57,11 +60,10 @@ class AIOrchestrator:
     project=await db.get(Project,project_id)
     if not project:return
     run=GenerationRun(project_id=project_id,provider=provider.provider_id if provider else 'quick');db.add(run);project.status=ProjectStatus.GENERATING.value;await db.flush();await db.commit()
-    loader,mc_version=LoaderType(project.loader),project.minecraft_version;prompt=project.generation_prompt or project.description
-    requirements=parse_requirements(prompt,theme=project.theme,minimum_mods=project.minimum_mods,maximum_mods=project.maximum_mods,minimum_downloads=project.minimum_downloads,target_ram_gb=project.target_ram_gb,target_fps=project.target_fps,shader_support=project.shader_support,performance_preference=project.performance_preference,visual_quality=project.shader_quality,resourcepack_support=project.resourcepack_support)
+    loader,mc_version=LoaderType(project.loader),project.minecraft_version;prompt=project.generation_prompt or project.description;requirements=parse_requirements(prompt,theme=project.theme,minimum_mods=project.minimum_mods,maximum_mods=project.maximum_mods,minimum_downloads=project.minimum_downloads,target_ram_gb=project.target_ram_gb,target_fps=project.target_fps,shader_support=project.shader_support,performance_preference=project.performance_preference,visual_quality=project.shader_quality,resourcepack_support=project.resourcepack_support)
     if requirements.warnings:raise RuntimeError('; '.join(requirements.warnings))
-    diagnostics.requested=requirements.minimum_mods or requirements.maximum_mods;intent=analyze_intent(prompt,theme=project.theme,forbidden=requirements.forbidden_features);profile=build_pack_profile(requirements);seed=project.id^int(datetime.now(timezone.utc).timestamp());brief=optimize_prompt(prompt,minecraft_version=mc_version,loader=loader.value,theme=project.theme,difficulty=project.difficulty,performance_preference=project.performance_preference);design=build_pack_design(requirements);target_count=max(requirements.minimum_mods or 40,min(profile.max_content_mods,requirements.maximum_mods or profile.max_content_mods));queries=list(dict.fromkeys(self._fallback_queries(project,prompt)+list(requirements.required_features)+list(intent.categories)+list(shader_loader_queries(profile,loader.value))))
-    await self._emit(project_id,AIProgressEvent(step=1,message='Analyzing intent and designing the pack vision...',data={'intent':intent.to_dict(),'profile':profile.as_pack_info(),'vision':design.vision,'gameplay_loop':design.gameplay_loop}),run)
+    diagnostics.requested=requirements.minimum_mods or requirements.maximum_mods;intent=analyze_intent(prompt,theme=project.theme,forbidden=requirements.forbidden_features);profile=build_pack_profile(requirements);seed=project.id^int(datetime.now(timezone.utc).timestamp());brief=optimize_prompt(prompt,minecraft_version=mc_version,loader=loader.value,theme=project.theme,difficulty=project.difficulty,performance_preference=project.performance_preference);design=build_pack_design(requirements);hints=selection_hints(project);target_count=max(requirements.minimum_mods or 40,min(profile.max_content_mods,requirements.maximum_mods or profile.max_content_mods));queries=list(dict.fromkeys(self._fallback_queries(project,prompt)+list(requirements.required_features)+list(intent.categories)+([] if hints['low_hardware'] else list(shader_loader_queries(profile,loader.value))))
+    await self._emit(project_id,AIProgressEvent(step=1,message='Analyzing intent and designing the pack vision...',data={'intent':intent.to_dict(),'profile':profile.as_pack_info(),'hardware_hints':hints,'vision':design.vision,'gameplay_loop':design.gameplay_loop}),run)
     if use_ai and provider is not None:
      try:
       analysis=await provider.chat_json(system_prompt=brief.system_prompt+'\nReason through player experience before selecting mods. Return structured requirements only; never invent missing information.',user_prompt=brief.as_user_prompt(),schema=RequirementAnalysisSchema)
@@ -80,6 +82,7 @@ class AIOrchestrator:
     if requirements.minimum_mods is not None and len(candidates)<requirements.minimum_mods:raise RuntimeError('Not enough compatible candidates for the requested minimum')
     if not candidates:raise RuntimeError('No compatible mods matched the selected requirements')
     await self._emit(project_id,AIProgressEvent(step=4,message='Scoring intent, realism, compatibility and performance cost...'),run);ranked=rank_by_quality(candidates,intent,profile,minimum_downloads=requirements.minimum_downloads);selected=select_quality(ranked,target_count,profile)
+    if hints['low_hardware']:selected=[m for m in selected if not any(x in ' '.join(m.categories).casefold() for x in ('worldgen','dimension','particle','shader'))] or selected[:1]
     if requirements.minimum_mods is not None and len(selected)<requirements.minimum_mods:
      for score in ranked:
       if len(selected)>=requirements.minimum_mods:break
@@ -106,14 +109,19 @@ class AIOrchestrator:
        if dep_key not in resolved_keys:pending.append((dep_key,depth+1))
     resolved_mods=resolver.deduplicate(resolved_mods);diagnostics.found=len(resolved_mods)
     if requirements.minimum_mods is not None and len(resolved_mods)<requirements.minimum_mods:raise RuntimeError(f'Dependencies reduced the result below the requested minimum ({len(resolved_mods)}/{requirements.minimum_mods}); diagnostics: {json.dumps(diagnostics.snapshot())}')
-    quality=review_pack(resolved_mods,requirements);final_check=verify_requirements(resolved_mods,intent);await self._emit(project_id,AIProgressEvent(step=6,message='Self-reviewing intent coverage, balance and compatibility...',data={'quality_score':quality.overall,'quality':quality.__dict__,'requirement_check':final_check.to_dict(),'profile':profile.as_pack_info(),'diagnostics':diagnostics.snapshot()}),run)
+    quality=review_pack(resolved_mods,requirements);final_check=verify_requirements(resolved_mods,intent)
     if quality.compatibility<1:raise RuntimeError('Self-review found unresolved downloadable-file compatibility issues')
     loader_version=project.loader_version or await resolver.resolve_loader_version(loader,mc_version)
     if not loader_version:raise RuntimeError(f'No compatible {loader.value} loader version found')
     project.mods_json=json.dumps([mod.model_dump(mode='json') for mod in resolved_mods]);project.resolved_loader_version=loader_version;project.ai_summary=f'Designed {project.theme} pack ({intent.goal}): {len(resolved_mods)} mods, quality {quality.overall:.2f}, coverage {len(final_check.satisfied)}/{len(intent.categories) or 0}.';project.status=ProjectStatus.REVIEW.value;run.status='completed';run.summary=project.ai_summary;run.completed_at=datetime.now(timezone.utc)
-    await persist_analysis(db,project,'generation')
-    await db.commit()
-    await self._emit(project_id,AIProgressEvent(step=7,message=f'Generation complete: {len(resolved_mods)} mods.',status='complete',data={'mod_count':len(resolved_mods),'target_count':target_count,'quality_score':quality.overall,'requirement_check':final_check.to_dict(),'diagnostics':diagnostics.snapshot(),'seed':seed}),run)
+    repair_status=await repair_project_dependencies(project,db)
+    compatibility=CompatibilityService(ModrinthClient(config.apis.modrinth_key),CurseForgeClient(config.apis.curseforge_key))
+    try:compatibility_report=await compatibility.check_project(project)
+    finally:await compatibility.close()
+    if not compatibility_report.export_ready:raise RuntimeError('Compatibility gate failed: '+('; '.join(compatibility_report.errors)))
+    await persist_analysis(db,project,'generation');await db.commit()
+    await self._emit(project_id,AIProgressEvent(step=7,message=f'Generation complete: {len(resolved_mods)} mods.',status='complete',data={'mod_count':len(resolved_mods),'target_count':target_count,'quality_score':quality.overall,'requirement_check':final_check.to_dict(),'compatibility':compatibility_report.model_dump(mode='json'),'dependency_repair':repair_status,'hardware_hints':hints,'seed':seed}),run)
+   finally:await db.close()
   except asyncio.CancelledError:await self._mark_cancelled(project_id);await self._emit(project_id,AIProgressEvent(step=0,message='Generation cancelled.',status='cancelled'));raise
   except Exception as exc:logger.exception('Generation failed for project %d',project_id);await self._mark_failed(project_id,str(exc));await self._emit(project_id,AIProgressEvent(step=0,message=f'Generation failed: {exc}',status='error',data={'diagnostics':diagnostics.snapshot()}))
   finally:
