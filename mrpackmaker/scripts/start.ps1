@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
 Set-Location $Root
-$Version = '2.5.4'
+$Version = '2.5.5'
 $Backend = Join-Path $Root 'backend'
 $BackendRun = Join-Path $Backend 'run.py'
 $VenvPython = Join-Path $Root 'venv\Scripts\python.exe'
@@ -18,20 +18,12 @@ function Fail([string]$Message) { Write-Host "`nERROR: $Message" -ForegroundColo
 function Quote-NativeArgument([string]$Value) { return '"' + ($Value -replace '(\\*)"','$1$1\"' -replace '(\\+)$','$1$1') + '"' }
 function Invoke-NativeLogged([string]$FilePath,[string[]]$ArgumentList,[string]$WorkingDirectory) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $FilePath
-    $psi.WorkingDirectory = $WorkingDirectory
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
+    $psi.FileName = $FilePath; $psi.WorkingDirectory = $WorkingDirectory; $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
     $psi.Arguments = (($ArgumentList | ForEach-Object { Quote-NativeArgument $_ }) -join ' ')
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = $psi
-    [void]$process.Start()
-    $stdout = $process.StandardOutput.ReadToEndAsync()
-    $stderr = $process.StandardError.ReadToEndAsync()
-    $process.WaitForExit()
-    $outText = $stdout.Result
-    $errText = $stderr.Result
+    $process = New-Object System.Diagnostics.Process; $process.StartInfo = $psi; [void]$process.Start()
+    $stdout = $process.StandardOutput.ReadToEndAsync(); $stderr = $process.StandardError.ReadToEndAsync(); $process.WaitForExit()
+    $outText = $stdout.Result; $errText = $stderr.Result
     if ($outText) { Add-Content -Path $LogFile -Value $outText -Encoding UTF8; Write-Host $outText.TrimEnd() }
     if ($errText) { Add-Content -Path $LogFile -Value $errText -Encoding UTF8; Write-Host $errText.TrimEnd() -ForegroundColor DarkGray }
     return $process.ExitCode
