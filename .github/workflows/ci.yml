@@ -41,3 +41,35 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Type-check and build
         run: npm run build
+
+  offline-verification:
+    name: Offline release verification
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        run: pip install -r mrpackmaker/backend/requirements.txt
+      - name: Verify release contracts
+        run: python scripts/verify_release.py
+
+  windows-launcher:
+    name: Windows PowerShell launcher parse
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse launcher scripts with Windows PowerShell
+        shell: powershell
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PWD 'mrpackmaker/scripts/start.ps1'),
+            [ref]$null,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Format-List | Out-String; throw 'start.ps1 contains PowerShell syntax errors' }
+          if (-not (Select-String -Path 'mrpackmaker/start.bat' -Pattern 'scripts\\start.ps1')) { throw 'start.bat does not delegate to start.ps1' }
+          Write-Host 'Windows launcher parse: PASS'
