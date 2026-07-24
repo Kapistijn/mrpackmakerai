@@ -14,6 +14,7 @@ class MrpackValidationError(ValueError):
  def __init__(self,issues:list[ExportIssue]):self.issues=issues;super().__init__('; '.join(i.message for i in issues))
 def mod_key(mod:ModEntry)->str:return f'{mod.source}:{mod.id}'
 def _safe_mod_filename(filename:str)->bool:
+ # Keep the legacy contract: filename errors are reported before any install-path error.
  if not isinstance(filename,str) or not filename or '\\' in filename:return False
  path=PurePosixPath(filename)
  return len(path.parts)==1 and path.name==filename and filename not in {'.','..'}
