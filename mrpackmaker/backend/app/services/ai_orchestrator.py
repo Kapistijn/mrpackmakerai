@@ -13,6 +13,7 @@ from app.models.enums import LoaderType, ProjectStatus, ThemeType
 from app.models.generation import GenerationRun
 from app.models.project import Project
 from app.schemas.ai import AIProgressEvent, CategoryPlan, GameplayAnalysis, IntentAnalysisSchema, RequirementAnalysisSchema
+from app.schemas.mod import ModEntry
 from app.services.ai_provider import AIProviderError, create_ai_provider
 from app.services.ai_reasoning import build_mod_memory, critique_pack, selection_feedback
 from app.services.compatibility import CompatibilityService
@@ -198,7 +199,7 @@ class AIOrchestrator:
                 run.status = "completed"
                 run.summary = project.ai_summary
                 run.completed_at = datetime.now(timezone.utc)
-                repair_status = await repair_project_dependencies(project, db)
+                repair_status = await repair_project_dependencies(project,db)
                 compatibility = CompatibilityService(ModrinthClient(config.apis.modrinth_key), CurseForgeClient(config.apis.curseforge_key))
                 try:
                     compatibility_report = await compatibility.check_project(project)
@@ -206,9 +207,9 @@ class AIOrchestrator:
                     await compatibility.close()
                 if not compatibility_report.export_ready:
                     raise RuntimeError("Compatibility gate failed: " + "; ".join(compatibility_report.errors))
-                await persist_analysis(db, project, "generation")
+                await persist_analysis(db,project,"generation")
                 await db.commit()
-                await self._emit(project_id, AIProgressEvent(step=7, message=f"Generation complete: {len(resolved)} mods.", status="complete", data={"mod_count": len(resolved), "dependency_repair": repair_status, "compatibility": compatibility_report.model_dump(mode="json"), "hardware_hints": hints, "candidate_count": len(candidates), "selection_feedback": final_feedback, "mod_memory": memory, "critique": final_critique}), run)
+                await self._emit(project_id,AIProgressEvent(step=7, message=f"Generation complete: {len(resolved)} mods.", status="complete", data={"mod_count": len(resolved), "dependency_repair": repair_status, "compatibility": compatibility_report.model_dump(mode="json"), "hardware_hints": hints, "candidate_count": len(candidates), "selection_feedback": final_feedback, "mod_memory": memory, "critique": final_critique}), run)
         except asyncio.CancelledError:
             await self._mark_failed(project_id, "Cancelled by user")
             await self._emit(project_id, AIProgressEvent(step=0, message="Generation cancelled.", status="cancelled"))
