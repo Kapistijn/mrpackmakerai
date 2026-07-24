@@ -18,4 +18,4 @@ def test_hardware_changes_selection_hints():
  low=Project(name='low',description='',minecraft_version='1.20.1',loader='fabric',theme='survival',target_ram_gb=4,hardware_gpu='GTX 1660',hardware_cpu='Intel Celeron');high=Project(name='high',description='',minecraft_version='1.20.1',loader='fabric',theme='survival',target_ram_gb=32,hardware_gpu='RTX 4090',hardware_cpu='Ryzen 9');assert selection_hints(low)['low_hardware'] and not selection_hints(high)['low_hardware']
 def test_snapshot_state_schema_is_complete():assert {'project_json','mods_json','analysis_json','hardware_json','pack_metadata_json','generated_files_json'} <= set(PackSnapshot.__table__.columns.keys())
 def test_generation_source_contains_backend_compatibility_gate_before_analysis():
- source=inspect.getsource(AIOrchestrator.generate);assert source.index('repair_project_dependencies') < source.index('persist_analysis') < source.rindex('self._emit')
+ source=inspect.getsource(AIOrchestrator.generate);assert source.index('repair_project_dependencies(project,db)') < source.index('await persist_analysis(db,project') < source.rindex("await self._emit(project_id,AIProgressEvent(step=7")
