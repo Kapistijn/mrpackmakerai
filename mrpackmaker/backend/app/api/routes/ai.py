@@ -5,11 +5,17 @@ from fastapi import APIRouter,Depends,HTTPException
 from pydantic import BaseModel,Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
+from app.config import config
 from app.db.session import get_db
 from app.models.enums import ProjectStatus
 from app.models.project import Project
 from app.services.ai_orchestrator import orchestrator
 from app.services.ai_provider import create_ai_provider
+from app.services.compatibility import CompatibilityService
+from app.services.curseforge import CurseForgeClient
+from app.services.dependency_repair import repair_project_dependencies
+from app.services.modrinth import ModrinthClient
+from app.services.pack_analysis import persist_analysis
 from app.services.source_registry import create_default_registry
 from app.services.worker_generation import WorkerGenerationEngine
 router=APIRouter()
@@ -38,8 +44,18 @@ async def start_worker_generation(project_id:int,body:WorkerGenerationRequest,db
  registry=create_default_registry();engine=WorkerGenerationEngine(registry)
  try:
   result,rounds=await engine.generate(project.generation_prompt or project.description,project.minecraft_version,project.loader_enum(),body.workers,body.target_mods)
-  project.mods_json=json.dumps([mod.model_dump(mode='json') for mod in result.mods]);project.ai_summary=f'Merged {body.workers} independent AI workers into one candidate ({len(result.mods)} mods)';project.status=ProjectStatus.REVIEW.value;await db.commit()
-  return {'status':'complete','project_id':project_id,'workers':body.workers,'candidate':result.evidence(),'merge_rounds':rounds,'mods':[mod.model_dump(mode='json') for mod in result.mods]}
+  project.mods_json=json.dumps([mod.model_dump(mode='json') for mod in result.mods])
+  repair_status=await repair_project_dependencies(project,db)
+  compatibility=CompatibilityService(ModrinthClient(config.apis.modrinth_key),CurseForgeClient(config.apis.curseforge_key))
+  try:compatibility_report=await compatibility.check_project(project)
+  finally:await compatibility.close()
+  if not compatibility_report.export_ready:
+   project.status=ProjectStatus.DRAFT.value;await db.commit()
+   raise HTTPException(status_code=422,detail='Merged worker pack failed compatibility validation: '+ '; '.join(compatibility_report.errors))
+  analysis=await persist_analysis(db,project,'multi-worker-generation')
+  project.ai_summary=f'Merged {body.workers} independent AI workers into one validated candidate ({len(result.mods)} mods)';project.status=ProjectStatus.REVIEW.value;await db.commit()
+  return {'status':'complete','project_id':project_id,'workers':body.workers,'candidate':result.evidence(),'merge_rounds':rounds,'dependency_repair':repair_status,'compatibility':compatibility_report.model_dump(mode='json'),'analysis':analysis,'mods':[mod.model_dump(mode='json') for mod in result.mods]}
+ except HTTPException:raise
  except ValueError as exc:raise HTTPException(status_code=400,detail=str(exc)) from exc
  finally:await registry.close()
 @router.get('/generate/{project_id}/stream')
