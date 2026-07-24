@@ -1,24 +1,36 @@
 from __future__ import annotations
 import json
 from fastapi import APIRouter,Depends,HTTPException
+from pydantic import BaseModel,Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.models.project import Project
 from app.models.pack_analysis import PackAnalysis
 from app.models.pack_snapshot import PackSnapshot
-from app.services.pack_analysis import persist_analysis,analyze_mods
+from app.services.pack_analysis import persist_analysis
 from app.services.pack_snapshots import list_snapshots,restore_snapshot
-from app.schemas.mod import ModEntry
 router=APIRouter()
+class HardwareInput(BaseModel):
+ cpu:str|None=None;gpu:str|None=None;ram_gb:int|None=Field(default=None,ge=1,le=512);resolution:str|None=None;refresh_rate:int|None=Field(default=None,ge=1,le=1000);target_fps:int|None=Field(default=None,ge=1,le=1000);shader_preference:str|None=None
 @router.get('/{project_id}')
 async def get_intelligence(project_id:int,db:AsyncSession=Depends(get_db)):
  project=await db.get(Project,project_id)
  if not project:raise HTTPException(status_code=404,detail='Project not found')
  latest=(await db.execute(select(PackAnalysis).where(PackAnalysis.project_id==project_id).order_by(PackAnalysis.version.desc()))).scalars().first()
- if not latest: report=await persist_analysis(db,project,'on-demand');await db.commit();latest=(await db.execute(select(PackAnalysis).where(PackAnalysis.project_id==project_id).order_by(PackAnalysis.version.desc()))).scalars().first()
- else: report=json.loads(latest.report_json)
+ if not latest:report=await persist_analysis(db,project,'on-demand');await db.commit();latest=(await db.execute(select(PackAnalysis).where(PackAnalysis.project_id==project_id).order_by(PackAnalysis.version.desc()))).scalars().first()
+ else:report=json.loads(latest.report_json)
  return {'analysis_id':latest.id,'version':latest.version,'created_at':latest.created_at,'report':report}
+@router.post('/{project_id}/hardware')
+async def set_hardware(project_id:int,body:HardwareInput,db:AsyncSession=Depends(get_db)):
+ project=await db.get(Project,project_id)
+ if not project:raise HTTPException(status_code=404,detail='Project not found')
+ for field in ('cpu','gpu','resolution','refresh_rate'):
+  value=getattr(body,field);setattr(project,{'cpu':'hardware_cpu','gpu':'hardware_gpu','resolution':'hardware_resolution','refresh_rate':'hardware_refresh_rate'}[field],value)
+ if body.ram_gb is not None:project.target_ram_gb=body.ram_gb
+ if body.target_fps is not None:project.target_fps=body.target_fps
+ if body.shader_preference is not None:project.shader_support=body.shader_preference
+ report=await persist_analysis(db,project,'hardware-change');await db.commit();return report
 @router.post('/{project_id}/scan')
 async def scan(project_id:int,db:AsyncSession=Depends(get_db)):
  project=await db.get(Project,project_id)
