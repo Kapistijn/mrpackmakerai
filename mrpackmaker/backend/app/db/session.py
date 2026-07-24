@@ -9,8 +9,7 @@ from app.config import config
 logger=logging.getLogger(__name__)
 class Base(DeclarativeBase):pass
 DATABASE_URL=f"sqlite+aiosqlite:///{config.db_path.as_posix()}"
-engine=create_async_engine(DATABASE_URL,echo=False,connect_args={'check_same_thread':False})
-AsyncSessionLocal=async_sessionmaker(engine,class_=AsyncSession,expire_on_commit=False)
+engine=create_async_engine(DATABASE_URL,echo=False,connect_args={'check_same_thread':False});AsyncSessionLocal=async_sessionmaker(engine,class_=AsyncSession,expire_on_commit=False)
 async def get_db()->AsyncGenerator[AsyncSession,None]:
  async with AsyncSessionLocal() as session:
   try:yield session;await session.commit()
@@ -31,3 +30,8 @@ def _apply_compatible_migrations(connection):
  additions={'difficulty':"VARCHAR(32) NOT NULL DEFAULT 'normal'",'performance_preference':"VARCHAR(32) NOT NULL DEFAULT 'balanced'",'loader_version':'VARCHAR(64) NULL','minimum_mods':'INTEGER NULL','maximum_mods':'INTEGER NULL','minimum_downloads':"INTEGER NOT NULL DEFAULT 0",'target_ram_gb':'INTEGER NULL','target_fps':'INTEGER NULL','shader_support':"VARCHAR(16) NOT NULL DEFAULT 'off'",'shader_quality':'VARCHAR(16) NULL','resourcepack_support':'BOOLEAN NOT NULL DEFAULT 0','required_mods_json':"TEXT NOT NULL DEFAULT '[]'",'forbidden_mods_json':"TEXT NOT NULL DEFAULT '[]'",'ai_creativity':"VARCHAR(16) NOT NULL DEFAULT 'balanced'",'ai_strictness':"VARCHAR(16) NOT NULL DEFAULT 'balanced'",'discovery_depth':"VARCHAR(16) NOT NULL DEFAULT 'standard'",'gameplay_style_json':"TEXT NOT NULL DEFAULT '[]'",'qol_level':'VARCHAR(16) NULL','hardware_profile':'VARCHAR(16) NULL','hardware_cpu':'VARCHAR(64) NULL','hardware_gpu':'VARCHAR(64) NULL','hardware_resolution':'VARCHAR(32) NULL','hardware_refresh_rate':'INTEGER NULL','multiplayer_mode':'VARCHAR(32) NULL','world_style':'VARCHAR(32) NULL','progression':'VARCHAR(32) NULL'}
  for column,definition in additions.items():
   if column not in columns:connection.execute(text(f'ALTER TABLE projects ADD COLUMN {column} {definition}'))
+ if 'pack_snapshots' in inspect(connection).get_table_names():
+  snapshot_columns={c['name'] for c in inspect(connection).get_columns('pack_snapshots')}
+  snapshot_additions={'project_json':"TEXT NOT NULL DEFAULT '{}'",'analysis_json':"TEXT NOT NULL DEFAULT '{}'",'hardware_json':"TEXT NOT NULL DEFAULT '{}'",'pack_metadata_json':"TEXT NOT NULL DEFAULT '{}'",'generated_files_json':"TEXT NOT NULL DEFAULT '{}'"}
+  for column,definition in snapshot_additions.items():
+   if column not in snapshot_columns:connection.execute(text(f'ALTER TABLE pack_snapshots ADD COLUMN {column} {definition}'))
