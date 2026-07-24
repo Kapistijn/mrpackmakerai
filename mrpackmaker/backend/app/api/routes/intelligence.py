@@ -11,7 +11,7 @@ from app.models.pack_analysis import PackAnalysis
 from app.models.pack_snapshot import PackSnapshot
 from app.services.pack_analysis import persist_analysis
 from app.services.pack_snapshots import list_snapshots,restore_snapshot
-from app.api.routes.modpack import repair_project_dependencies
+from app.services.dependency_repair import repair_project_dependencies
 from app.services.compatibility import CompatibilityService
 from app.services.modrinth import ModrinthClient
 from app.services.curseforge import CurseForgeClient
@@ -53,7 +53,7 @@ async def restore(project_id:int,snapshot_id:int,db:AsyncSession=Depends(get_db)
  service=CompatibilityService(modrinth=ModrinthClient(config.apis.modrinth_key),curseforge=CurseForgeClient(config.apis.curseforge_key))
  try:report=await service.check_project(project)
  finally:await service.close()
- if getattr(report,'export_ready',False) is False and getattr(report,'errors',[]):raise HTTPException(status_code=422,detail='Restored snapshot failed compatibility validation')
+ if not report.export_ready:raise HTTPException(status_code=422,detail='Restored snapshot failed compatibility validation')
  analysis=await persist_analysis(db,project,'rollback');await db.commit();return {'status':'restored','version':snapshot.version,'analysis':analysis}
 @router.get('/{project_id}/snapshots/compare/{left}/{right}')
 async def compare(project_id:int,left:int,right:int,db:AsyncSession=Depends(get_db)):
