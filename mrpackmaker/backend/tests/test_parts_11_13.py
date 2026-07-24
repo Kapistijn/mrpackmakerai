@@ -22,7 +22,7 @@ def test_worker_api_contract_is_registered():
 
 
 def test_verification_contract_covers_compile_build_and_smoke_boundaries():
-    workflow = (ROOT.parent.parent / '.github' / 'workflows' / 'ci.yml').read_text(encoding='utf-8')
+    workflow = (ROOT.parent / '.github' / 'workflows' / 'ci.yml').read_text(encoding='utf-8')
     assert 'compileall' in workflow
     assert 'pytest' in workflow
     assert 'npm run build' in workflow
