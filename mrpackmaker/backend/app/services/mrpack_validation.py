@@ -14,7 +14,6 @@ class MrpackValidationError(ValueError):
  def __init__(self,issues:list[ExportIssue]):self.issues=issues;super().__init__('; '.join(i.message for i in issues))
 def mod_key(mod:ModEntry)->str:return f'{mod.source}:{mod.id}'
 def _safe_mod_filename(filename:str)->bool:
- # Legacy contract: path-like filenames report unsafe_file_name first.
  return isinstance(filename,str) and bool(filename) and '/' not in filename and '\\' not in filename and filename not in {'.','..'} and PurePosixPath(filename).name==filename
 def install_path_for(mod:ModEntry)->str|None:
  if not mod.file_name:return None
@@ -38,7 +37,12 @@ def validate_export_inputs(project:Project,mods:list[ModEntry])->list[ExportIssu
   if previous and previous!=key:issues.append(ExportIssue('duplicate_project',f"'{mod.name}' duplicates project '{previous}' across catalog sources."))
   seen_ids[identity]=key
   if not mod.file_name:issues.append(ExportIssue('file_missing',f'{mod.name} has no resolved file.'));continue
-  if not _safe_mod_filename(mod.file_name):issues.append(ExportIssue('unsafe_file_name',f'{mod.name} has an unsafe file name.'));continue
+  filename_safe=_safe_mod_filename(mod.file_name)
+  if not filename_safe:
+   issues.append(ExportIssue('unsafe_file_name',f'{mod.name} has an unsafe file name.'))
+   # Keep the explicit install-path diagnostic too, while never allowing the path through.
+   issues.append(ExportIssue('unsafe_install_path',f'{mod.name} has an unsupported install path.'))
+   continue
   path=install_path_for(mod)
   if not path or not is_safe_install_path(path):issues.append(ExportIssue('unsafe_install_path',f'{mod.name} has an unsupported install path.'));continue
   if path in seen_paths:issues.append(ExportIssue('duplicate_file',f"Multiple mods use '{path}'."))
