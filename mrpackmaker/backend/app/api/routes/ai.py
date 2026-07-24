@@ -20,8 +20,8 @@ from app.services.source_registry import create_default_registry
 from app.services.worker_generation import WorkerGenerationEngine
 router=APIRouter()
 class WorkerGenerationRequest(BaseModel):
- workers:int=Field(default=4,ge=2,le=24)
- target_mods:int=Field(default=40,ge=1,le=500)
+ workers:int|None=Field(default=None,ge=2,le=24)
+ target_mods:int|None=Field(default=None,ge=1,le=500)
 async def _begin_generation(project:Project,db:AsyncSession,*,use_ai:bool)->None:
  project.status=ProjectStatus.GENERATING.value;await db.commit()
  try:orchestrator.start_generation(project.id,use_ai=use_ai)
@@ -41,9 +41,10 @@ async def start_worker_generation(project_id:int,body:WorkerGenerationRequest,db
  project=await db.get(Project,project_id)
  if not project:raise HTTPException(status_code=404,detail='Project not found')
  if project.status==ProjectStatus.GENERATING.value or orchestrator.is_active(project_id):raise HTTPException(status_code=409,detail='Generation already in progress')
+ workers=body.workers or project.worker_count or 4;target=body.target_mods or project.minimum_mods or 40
  registry=create_default_registry();engine=WorkerGenerationEngine(registry)
  try:
-  result,rounds=await engine.generate(project.generation_prompt or project.description,project.minecraft_version,project.loader_enum(),body.workers,body.target_mods)
+  result,rounds=await engine.generate(project.generation_prompt or project.description,project.minecraft_version,project.loader_enum(),workers,target)
   project.mods_json=json.dumps([mod.model_dump(mode='json') for mod in result.mods])
   repair_status=await repair_project_dependencies(project,db)
   compatibility=CompatibilityService(ModrinthClient(config.apis.modrinth_key),CurseForgeClient(config.apis.curseforge_key))
@@ -52,9 +53,8 @@ async def start_worker_generation(project_id:int,body:WorkerGenerationRequest,db
   if not compatibility_report.export_ready:
    project.status=ProjectStatus.DRAFT.value;await db.commit()
    raise HTTPException(status_code=422,detail='Merged worker pack failed compatibility validation: '+ '; '.join(compatibility_report.errors))
-  analysis=await persist_analysis(db,project,'multi-worker-generation')
-  project.ai_summary=f'Merged {body.workers} independent AI workers into one validated candidate ({len(result.mods)} mods)';project.status=ProjectStatus.REVIEW.value;await db.commit()
-  return {'status':'complete','project_id':project_id,'workers':body.workers,'candidate':result.evidence(),'merge_rounds':rounds,'dependency_repair':repair_status,'compatibility':compatibility_report.model_dump(mode='json'),'analysis':analysis,'mods':[mod.model_dump(mode='json') for mod in result.mods]}
+  analysis=await persist_analysis(db,project,'multi-worker-generation');project.ai_summary=f'Merged {workers} independent AI workers into one validated candidate ({len(result.mods)} mods)';project.status=ProjectStatus.REVIEW.value;await db.commit()
+  return {'status':'complete','project_id':project_id,'workers':workers,'target_mods':target,'candidate':result.evidence(),'merge_rounds':rounds,'dependency_repair':repair_status,'compatibility':compatibility_report.model_dump(mode='json'),'analysis':analysis,'validation':{'dependency_repair':'complete','compatibility':'export_ready','analysis':'complete'},'mods':[mod.model_dump(mode='json') for mod in result.mods]}
  except HTTPException:raise
  except ValueError as exc:raise HTTPException(status_code=400,detail=str(exc)) from exc
  finally:await registry.close()
