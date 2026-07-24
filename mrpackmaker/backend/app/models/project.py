@@ -33,6 +33,12 @@ class Project(Base):
  ai_creativity:Mapped[str]=mapped_column(String(16),nullable=False,default='balanced')
  ai_strictness:Mapped[str]=mapped_column(String(16),nullable=False,default='balanced')
  discovery_depth:Mapped[str]=mapped_column(String(16),nullable=False,default='standard')
+ gameplay_style_json:Mapped[str]=mapped_column(Text,nullable=False,default='[]')
+ qol_level:Mapped[str|None]=mapped_column(String(16),nullable=True)
+ hardware_profile:Mapped[str|None]=mapped_column(String(16),nullable=True)
+ multiplayer_mode:Mapped[str|None]=mapped_column(String(32),nullable=True)
+ world_style:Mapped[str|None]=mapped_column(String(32),nullable=True)
+ progression:Mapped[str|None]=mapped_column(String(32),nullable=True)
  status:Mapped[str]=mapped_column(String(32),nullable=False,default=ProjectStatus.DRAFT.value)
  mods_json:Mapped[str]=mapped_column(Text,nullable=False,default='[]')
  resolved_loader_version:Mapped[str|None]=mapped_column(String(64),nullable=True)
@@ -42,7 +48,7 @@ class Project(Base):
  created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=_utcnow)
  updated_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=_utcnow,onupdate=_utcnow)
  def __init__(self,**kwargs):
-  defaults={'description':'','theme_custom':None,'difficulty':'normal','performance_preference':'balanced','generation_prompt':'','minimum_downloads':0,'target_ram_gb':None,'target_fps':None,'shader_support':'off','shader_quality':None,'resourcepack_support':False,'required_mods_json':'[]','forbidden_mods_json':'[]','ai_creativity':'balanced','ai_strictness':'balanced','discovery_depth':'standard','status':ProjectStatus.DRAFT.value,'mods_json':'[]','resolved_loader_version':None,'ai_summary':None,'mrpack_path':None,'settings_locked':False}
+  defaults={'description':'','theme_custom':None,'difficulty':'normal','performance_preference':'balanced','generation_prompt':'','minimum_downloads':0,'target_ram_gb':None,'target_fps':None,'shader_support':'off','shader_quality':None,'resourcepack_support':False,'required_mods_json':'[]','forbidden_mods_json':'[]','ai_creativity':'balanced','ai_strictness':'balanced','discovery_depth':'standard','gameplay_style_json':'[]','qol_level':None,'hardware_profile':None,'multiplayer_mode':None,'world_style':None,'progression':None,'status':ProjectStatus.DRAFT.value,'mods_json':'[]','resolved_loader_version':None,'ai_summary':None,'mrpack_path':None,'settings_locked':False}
   defaults.update(kwargs);super().__init__(**defaults)
  def loader_enum(self)->LoaderType:return LoaderType(self.loader)
  def theme_enum(self)->ThemeType:return ThemeType(self.theme)

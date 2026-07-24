@@ -31,7 +31,7 @@ class ApiClient{
  async applyChange(id:number,requestId:number){return this.request<any>(`/editor/${id}/apply`,{method:'POST',body:JSON.stringify({request_id:requestId})})}
  async getChangeHistory(id:number){return this.request<any[]>(`/editor/${id}/history`)}
  async analyzeRepair(id:number,text:string){return this.request<any>(`/repair/${id}`,{method:'POST',body:JSON.stringify({text})})}
- async importMrpack(file:File){const body=new FormData();body.append('file',file);const response=await fetch(`${API_BASE}/imports`,{method:'POST',body});if(!response.ok)throw new Error('Import failed');return response.json()}
+ async importMrpack(file:File){const body=new FormData();body.append('file',file);const response=await fetch(`${API_BASE}/imports`,{method:'POST',body});if(!response.ok){const error=await response.json().catch(()=>({detail:'Import failed'}));throw new Error(typeof error.detail==='string'?error.detail:'Import failed')}return response.json()}
  async getPackInsights(id:number){return this.request<any>(`/insights/${id}`)}
  async proposeNaturalLanguageEdit(id:number,prompt:string){return this.request<any>(`/insights/${id}/natural-language`,{method:'POST',body:JSON.stringify({prompt})})}
  async planSafeUpdate(id:number){return this.request<any>(`/insights/${id}/update-plan`,{method:'POST'})}
