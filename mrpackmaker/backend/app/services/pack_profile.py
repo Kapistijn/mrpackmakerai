@@ -1,10 +1,4 @@
-"""Turn validated requirements into a concrete generation/export profile.
-
-RAM, FPS, shader support and the performance preference used to be stored but
-mostly ignored. This module maps them into deterministic directives that the
-scoring engine, the self-check and the MRPack writer all consume, so every
-advanced option has a real effect on the produced pack.
-"""
+"""Turn validated requirements into a concrete generation/export profile."""
 
 from __future__ import annotations
 
@@ -13,10 +7,19 @@ from dataclasses import dataclass
 from app.services.requirements import Requirements
 
 SHADER_OFF, SHADER_OPTIONAL, SHADER_ENABLED = "off", "optional", "enabled"
+MAX_SUPPORTED_MODS = 500
 _SHADER_ALIASES = {
-    "off": SHADER_OFF, "none": SHADER_OFF, "disabled": SHADER_OFF, "": SHADER_OFF,
-    "optional": SHADER_OPTIONAL, "shader_compatible": SHADER_OPTIONAL, "compatible": SHADER_OPTIONAL,
-    "enabled": SHADER_ENABLED, "on": SHADER_ENABLED, "required": SHADER_ENABLED, "yes": SHADER_ENABLED,
+    "off": SHADER_OFF,
+    "none": SHADER_OFF,
+    "disabled": SHADER_OFF,
+    "": SHADER_OFF,
+    "optional": SHADER_OPTIONAL,
+    "shader_compatible": SHADER_OPTIONAL,
+    "compatible": SHADER_OPTIONAL,
+    "enabled": SHADER_ENABLED,
+    "on": SHADER_ENABLED,
+    "required": SHADER_ENABLED,
+    "yes": SHADER_ENABLED,
 }
 
 
@@ -31,7 +34,7 @@ def _ram_content_budget(ram_gb: int) -> int:
         return 90
     if ram_gb <= 16:
         return 150
-    return 300
+    return MAX_SUPPORTED_MODS
 
 
 @dataclass(frozen=True)
@@ -49,7 +52,9 @@ class PackProfile:
 
     @property
     def needs_performance_mods(self) -> bool:
-        return self.performance_profile == "performance" or (self.target_fps is not None and self.target_fps >= 120) or self.recommended_ram_gb <= 4
+        return self.performance_profile == "performance" or (
+            self.target_fps is not None and self.target_fps >= 120
+        ) or self.recommended_ram_gb <= 4
 
     def as_pack_info(self) -> dict:
         return {
@@ -60,6 +65,8 @@ class PackProfile:
             "target_fps": self.target_fps,
             "performance_profile": self.performance_profile,
             "resourcepack_support": self.resourcepack_support,
+            "max_supported_mods": MAX_SUPPORTED_MODS,
+            "max_content_mods": self.max_content_mods,
         }
 
 
@@ -97,19 +104,42 @@ def build_pack_profile(req: Requirements) -> PackProfile:
     if shader_mode == SHADER_ENABLED and ram_gb <= 4:
         shader_mode = SHADER_OPTIONAL
     explicit_quality = (req.visual_quality or "").strip().casefold()
-    shader_quality = explicit_quality if explicit_quality in {"low", "medium", "high"} else ("high" if ram_gb >= 16 else "medium" if ram_gb >= 8 else "low")
+    shader_quality = (
+        explicit_quality
+        if explicit_quality in {"low", "medium", "high"}
+        else "high"
+        if ram_gb >= 16
+        else "medium"
+        if ram_gb >= 8
+        else "low"
+    )
     floor = _performance_floor(ram_gb, req.target_fps, profile)
     budget = _ram_content_budget(ram_gb)
+    # An explicit user cap is a real product requirement, not a hint. The
+    # resolver still validates every mod and the critique layer reports RAM/FPS
+    # risk, but 500-mod packs must not be silently reduced to 150 or 300.
     if req.maximum_mods is not None:
-        budget = min(budget, req.maximum_mods)
+        budget = min(MAX_SUPPORTED_MODS, max(1, req.maximum_mods))
     if req.minimum_mods is not None:
-        budget = max(budget, req.minimum_mods)
-    return PackProfile(recommended_ram_gb=ram_gb,target_fps=req.target_fps,shader_mode=shader_mode,shader_quality=shader_quality,performance_profile=profile,performance_floor=floor,allow_heavy_worldgen=ram_gb >= 8,allow_heavy_mods=ram_gb >= 8,max_content_mods=budget,resourcepack_support=bool(req.resourcepack_support))
+        budget = min(MAX_SUPPORTED_MODS, max(budget, req.minimum_mods))
+    return PackProfile(
+        recommended_ram_gb=ram_gb,
+        target_fps=req.target_fps,
+        shader_mode=shader_mode,
+        shader_quality=shader_quality,
+        performance_profile=profile,
+        performance_floor=floor,
+        allow_heavy_worldgen=ram_gb >= 8,
+        allow_heavy_mods=ram_gb >= 8,
+        max_content_mods=min(MAX_SUPPORTED_MODS, budget),
+        resourcepack_support=bool(req.resourcepack_support),
+    )
 
 
 def profile_from_project(project) -> PackProfile:
     """Recompute the profile while accepting projects created before 1.8.7."""
     from app.services.requirements import parse_requirements
+
     value = lambda name, default=None: getattr(project, name, default)
     req = parse_requirements(
         value("generation_prompt", "") or value("description", "") or "",
