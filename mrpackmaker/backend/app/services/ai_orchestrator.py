@@ -45,7 +45,7 @@ class AIOrchestrator:
   if queue:=self._events.get(pid):await queue.put(event)
   if event.status in TERMINAL_STATUSES:self._final[pid]=event
   if run is not None:run.event_log_json=json.dumps([*json.loads(run.event_log_json or '[]'),event.model_dump(mode='json')])
- async def _gather_candidates(self,registry,queries,mc,loader,requirements,seed):
+ async def _gather_candidates(self,registry,resolver,queries,mc,loader,requirements=None,seed=0):
   candidates={}
   for query in dict.fromkeys([*queries[:32],'']):
    for source in registry.providers(available_only=True):
@@ -53,7 +53,8 @@ class AIOrchestrator:
     except Exception as exc:logger.warning("Search failed on %s for '%s': %s",source.source_id,query,exc);continue
     for hit in hits:
      text=' '.join((hit.name,hit.slug,hit.summary,*hit.categories))
-     if hit.downloads>=requirements.minimum_downloads and theme_matches(text,requirements):candidates.setdefault(mod_identity(hit),hit)
+     if requirements is None or (hit.downloads>=requirements.minimum_downloads and theme_matches(text,requirements)):candidates.setdefault(mod_identity(hit),hit)
+  if requirements is None:return list(candidates.values())
   return [item.mod for item in rank_mods(list(candidates.values()),requirements,seed=seed)]
  async def generate(self,project_id:int,*,use_ai:bool=True)->None:
   queue=self._events[project_id];provider=create_ai_provider() if use_ai else None;registry=ModSourceRegistry([ModrinthClient(config.apis.modrinth_key),CurseForgeClient(config.apis.curseforge_key)]);diagnostics=GenerationDiagnostics()
@@ -128,7 +129,9 @@ class AIOrchestrator:
  def is_active(self,project_id):return bool(self._active.get(project_id) and not self._active[project_id].done())
  async def stream_events(self,project_id)->AsyncGenerator[AIProgressEvent,None]:
   queue=self._events.get(project_id)
-  if queue is None:return
+  if queue is None:
+   if final:=self._final.pop(project_id,None):yield final
+   return
   while True:
    event=await queue.get()
    if event is None:break
