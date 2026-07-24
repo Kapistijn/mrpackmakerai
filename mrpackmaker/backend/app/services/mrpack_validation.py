@@ -14,10 +14,8 @@ class MrpackValidationError(ValueError):
  def __init__(self,issues:list[ExportIssue]):self.issues=issues;super().__init__('; '.join(i.message for i in issues))
 def mod_key(mod:ModEntry)->str:return f'{mod.source}:{mod.id}'
 def _safe_mod_filename(filename:str)->bool:
- # Keep the legacy contract: filename errors are reported before any install-path error.
- if not isinstance(filename,str) or not filename or '\\' in filename:return False
- path=PurePosixPath(filename)
- return len(path.parts)==1 and path.name==filename and filename not in {'.','..'}
+ # Legacy contract: path-like filenames report unsafe_file_name first.
+ return isinstance(filename,str) and bool(filename) and '/' not in filename and '\\' not in filename and filename not in {'.','..'} and PurePosixPath(filename).name==filename
 def install_path_for(mod:ModEntry)->str|None:
  if not mod.file_name:return None
  explicit=getattr(mod,'install_path',None)
