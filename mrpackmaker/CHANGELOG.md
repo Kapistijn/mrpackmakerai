@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.5.5
+
+- Fixed the second Windows PowerShell startup bug: nested quotes in the Python preflight command were stripped before Python received them, turning `print("Backend import OK")` into invalid `print(Backend` syntax. The preflight now uses quote-free Python code, `import app.main; print(1)`, and prints the friendly success message from PowerShell.
+- Added a clear validation error when `MRPACK_PORT` is not an integer from 1 through 65535.
+- Added a preflight check for the backend launcher file so a broken or incomplete download fails with a useful message instead of a traceback.
+- Bumped backend, frontend, installer, and launcher metadata to 2.5.5.
+- Added regression coverage for the PowerShell argument-quoting failure, port bounds, missing launcher detection, and version alignment.
+
 ## 2.5.4
 
 - Fixed the launcher crash `The ampersand (&) character is not allowed` (`AmpersandNotAllowed`). `start.bat` piped the server through PowerShell inline as `2^>^&1 | Tee-Object`, but cmd does not strip the `^` carets inside a double-quoted `-Command`, so PowerShell received them verbatim and refused to start. Startup now runs from a real `scripts/start.ps1` invoked with `-File`, so `2>&1 | Tee-Object` parses normally and live logs stream correctly.
