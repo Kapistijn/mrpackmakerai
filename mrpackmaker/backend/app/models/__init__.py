@@ -6,4 +6,5 @@ from app.models.imported_pack import ImportedPack
 from app.models.repair_report import RepairReport
 from app.models.pack_analysis import PackAnalysis
 from app.models.pack_snapshot import PackSnapshot
-__all__=['GenerationRun','Project','ModpackChange','AIRequest','ImportedPack','RepairReport','PackAnalysis','PackSnapshot']
+from app.models.snapshot_sequence import SnapshotSequence
+__all__=['GenerationRun','Project','ModpackChange','AIRequest','ImportedPack','RepairReport','PackAnalysis','PackSnapshot','SnapshotSequence']
