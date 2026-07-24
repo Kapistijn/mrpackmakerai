@@ -1,7 +1,7 @@
 """Structured, rotating, secret-redacting logging configuration."""
 from __future__ import annotations
 import logging
-import logging.config
+import logging.handlers
 from pathlib import Path
 from app.config import config
 from app.services.launch_hardening import redact_log_line
