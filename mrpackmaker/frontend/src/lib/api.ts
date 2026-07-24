@@ -35,5 +35,12 @@ class ApiClient{
  async getPackInsights(id:number){return this.request<any>(`/insights/${id}`)}
  async proposeNaturalLanguageEdit(id:number,prompt:string){return this.request<any>(`/insights/${id}/natural-language`,{method:'POST',body:JSON.stringify({prompt})})}
  async planSafeUpdate(id:number){return this.request<any>(`/insights/${id}/update-plan`,{method:'POST'})}
+ async getIntelligence(id:number){return this.request<any>(`/intelligence/${id}`)}
+ async scanIntelligence(id:number){return this.request<any>(`/intelligence/${id}/scan`,{method:'POST'})}
+ async getIntelligenceHistory(id:number){return this.request<any[]>(`/intelligence/${id}/history`)}
+ async getSnapshots(id:number){return this.request<any[]>(`/intelligence/${id}/snapshots`)}
+ async restoreSnapshot(id:number,snapshot:number){return this.request<any>(`/intelligence/${id}/snapshots/${snapshot}/restore`,{method:'POST'})}
+ async compareSnapshots(id:number,left:number,right:number){return this.request<any>(`/intelligence/${id}/snapshots/compare/${left}/${right}`)}
+ async setHardware(id:number,data:any){return this.request<any>(`/intelligence/${id}/hardware`,{method:'POST',body:JSON.stringify(data)})}
 }
 export const api=new ApiClient();

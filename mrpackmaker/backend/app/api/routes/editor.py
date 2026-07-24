@@ -9,6 +9,8 @@ from app.models.modpack_change import ModpackChange
 from app.models.project import Project
 from app.schemas.editor import ChangePrompt,ApproveChange
 from app.services.ai_mod_editor import apply,propose
+from app.services.pack_snapshots import create_snapshot
+from app.services.pack_analysis import persist_analysis
 router=APIRouter()
 @router.post('/{project_id}/propose')
 async def propose_change(project_id:int,body:ChangePrompt,db:AsyncSession=Depends(get_db)):
@@ -17,16 +19,16 @@ async def propose_change(project_id:int,body:ChangePrompt,db:AsyncSession=Depend
  result=await propose(project,body.prompt);request=AIRequest(project_id=project_id,prompt=body.prompt,status='planned',plan_json=json.dumps(result));db.add(request);await db.flush();return {'request_id':request.id,**result}
 @router.post('/{project_id}/apply')
 async def apply_change(project_id:int,body:ApproveChange,db:AsyncSession=Depends(get_db)):
- project=await db.get(Project,project_id)
+ project=await db.get(Project,project_id);request=await db.get(AIRequest,body.request_id)
  if not project:raise HTTPException(status_code=404,detail='Project not found')
- request=await db.get(AIRequest,body.request_id)
  if not request or request.project_id!=project_id:raise HTTPException(status_code=404,detail='Change plan not found')
  if request.status!='planned':raise HTTPException(status_code=409,detail=f'Change plan is {request.status}, not awaiting approval')
  plan=json.loads(request.plan_json)
  if not plan.get('plan',{}).get('requires_approval',True):raise HTTPException(status_code=422,detail='Invalid change plan')
+ await create_snapshot(db,project,'Before AI approved change',{'prompt':request.prompt})
  try:mods,added,removed=await apply(project,request.prompt,plan.get('plan',{}),db)
  except ValueError as exc:raise HTTPException(status_code=422,detail=str(exc)) from exc
- change=ModpackChange(project_id=project_id,action=plan.get('plan',{}).get('action','change'),mods_added=json.dumps([m.model_dump(mode='json') for m in added]),mods_removed=json.dumps([m.model_dump(mode='json') for m in removed]),reason=plan.get('plan',{}).get('reason',''),ai_prompt=request.prompt,impact=json.dumps({'mod_count':len(mods)}));db.add(change);request.status='applied';await db.flush();return {'change_id':change.id,'mods':len(mods),'status':'applied'}
+ change=ModpackChange(project_id=project_id,action=plan.get('plan',{}).get('action','change'),mods_added=json.dumps([m.model_dump(mode='json') for m in added]),mods_removed=json.dumps([m.model_dump(mode='json') for m in removed]),reason=plan.get('plan',{}).get('reason',''),ai_prompt=request.prompt,impact=json.dumps({'mod_count':len(mods)}));db.add(change);request.status='applied';await db.flush();await persist_analysis(db,project,'ai_edit');return {'change_id':change.id,'mods':len(mods),'status':'applied','approval_recorded':True}
 @router.get('/{project_id}/history')
 async def history(project_id:int,db:AsyncSession=Depends(get_db)):
  if not await db.get(Project,project_id):raise HTTPException(status_code=404,detail='Project not found')

@@ -3,18 +3,13 @@ from dataclasses import dataclass
 from app.schemas.mod import ModEntry
 @dataclass(frozen=True)
 class ModChangePlan:
- action:str
- reason:str
- add_queries:tuple[str,...]=()
- remove_names:tuple[str,...]=()
- replace_names:tuple[str,...]=()
- requires_approval:bool=True
- def to_dict(self): return {'action':self.action,'reason':self.reason,'add_queries':list(self.add_queries),'remove_names':list(self.remove_names),'replace_names':list(self.replace_names),'requires_approval':self.requires_approval}
+ action:str;reason:str;add_queries:tuple[str,...]=();remove_names:tuple[str,...]=();replace_names:tuple[str,...]=();requires_approval:bool=True;summary:str='';risk:str='low';impact:str='';benefits:tuple[str,...]=();drawbacks:tuple[str,...]=();alternatives:tuple[str,...]=();dependencies_affected:tuple[str,...]=();performance_impact:str='unknown';compatibility_impact:str='unknown';realism_impact:str='unknown'
+ def to_dict(self):return {'action':self.action,'reason':self.reason,'add_queries':list(self.add_queries),'remove_names':list(self.remove_names),'replace_names':list(self.replace_names),'requires_approval':self.requires_approval,'summary':self.summary or self.reason,'risk':self.risk,'impact':self.impact or self.reason,'benefits':list(self.benefits),'drawbacks':list(self.drawbacks),'alternatives':list(self.alternatives),'dependencies_affected':list(self.dependencies_affected),'performance_impact':self.performance_impact,'compatibility_impact':self.compatibility_impact,'realism_impact':self.realism_impact}
 def plan_change(prompt:str,current:list[ModEntry])->ModChangePlan:
- text=(prompt or '').casefold(); names=tuple(m.name for m in current)
+ text=(prompt or '').casefold();names=tuple(m.name for m in current)
  if any(x in text for x in ('remove','verwijder')) and any(x in text for x in ('magic','magie')):
-  return ModChangePlan('remove','Remove magic mods while preserving unrelated user choices',remove_names=tuple(m.name for m in current if any(x in ' '.join((m.name,m.slug,*m.categories)).casefold() for x in ('magic','spell','arcane'))))
- if any(x in text for x in ('farming','farm','landbouw')): return ModChangePlan('add','Add farming content compatible with the current pack',add_queries=('farming','agriculture','crops'))
- if any(x in text for x in ('animal','dieren','wildlife')): return ModChangePlan('add','Add realistic animal content',add_queries=('animals','wildlife','mobs'))
- if any(x in text for x in ('real life','realistic','realistischer')): return ModChangePlan('add','Increase realism without removing current choices',add_queries=('weather','seasons','temperature','farming','animals','physics'))
- return ModChangePlan('analyze','No safe deterministic change understood; ask AI for a structured proposal',add_queries=())
+  removed=tuple(m.name for m in current if any(x in ' '.join((m.name,m.slug,*m.categories)).casefold() for x in ('magic','spell','arcane')));return ModChangePlan('remove','Remove magic mods while preserving unrelated user choices',remove_names=removed,summary='Remove only mods matching the magic/spell intent.',risk='medium',impact=f'{len(removed)} mod(s) removed',benefits=('Clearer pack theme',),drawbacks=('Magic content is lost',),alternatives=('Keep all mods and adjust configs',),performance_impact='slightly lower load',compatibility_impact='requires dependency re-check',realism_impact='neutral')
+ if any(x in text for x in ('farming','farm','landbouw')):return ModChangePlan('add','Add farming content compatible with the current pack',add_queries=('farming','agriculture','crops'),summary='Add compatible farming systems.',benefits=('More food and farming depth',),drawbacks=('Adds content and possible dependencies',),alternatives=('Use existing farming mods only',),performance_impact='low to medium',compatibility_impact='requires dependency re-check',realism_impact='positive')
+ if any(x in text for x in ('animal','dieren','wildlife')):return ModChangePlan('add','Add realistic animal content',add_queries=('animals','wildlife','mobs'),summary='Add compatible wildlife and animal content.',benefits=('More ecological variety',),drawbacks=('More entities can affect CPU load',),alternatives=('Keep current mob set',),performance_impact='medium entity impact',compatibility_impact='requires dependency re-check',realism_impact='positive')
+ if any(x in text for x in ('real life','realistic','realistischer')):return ModChangePlan('add','Increase realism without removing current choices',add_queries=('weather','seasons','temperature','farming','animals','physics'),summary='Add realism systems without removing current content.',risk='medium',benefits=('More immersive survival loop',),drawbacks=('More systems and dependencies',),alternatives=('Tune configs only',),performance_impact='medium',compatibility_impact='requires dependency re-check',realism_impact='strongly positive')
+ return ModChangePlan('analyze','No safe deterministic change understood; ask AI for a structured proposal',summary='No safe deterministic change was understood.',risk='high',impact='No changes proposed',alternatives=('Refine the request with a specific goal',),performance_impact='unknown',compatibility_impact='unknown',realism_impact='unknown')
