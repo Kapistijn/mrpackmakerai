@@ -1,8 +1,6 @@
 @echo off
-REM Thin launcher for the PowerShell start engine (2.5.5).
-REM The startup logic lives in scripts\start.ps1 so we avoid the cmd/PowerShell
-REM quoting bug that crashed the old inline command with an invalid escaped
-REM redirection and the AmpersandNotAllowed parser error.
+REM Thin launcher for the PowerShell start engine (2.5.6).
+REM Startup uses scripts\start.ps1 to keep native stdout/stderr handling clean.
 setlocal
 cd /d "%~dp0"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\start.ps1"
