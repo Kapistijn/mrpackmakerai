@@ -13,7 +13,7 @@ from app.logging import setup_logging
 logger=logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app:FastAPI):setup_logging();await init_db();await reset_orphaned_generations();yield
-app=FastAPI(title='MrPackMaker',description='AI Minecraft Modpack Generator',version='2.5.0',lifespan=lifespan)
+app=FastAPI(title='MrPackMaker',description='AI Minecraft Modpack Generator',version='2.5.1',lifespan=lifespan)
 app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:5173','http://127.0.0.1:5173','http://localhost:8000','http://127.0.0.1:8000'],allow_credentials=True,allow_methods=['*'],allow_headers=['*'])
 @app.exception_handler(Exception)
 async def global_exception_handler(request:Request,exc:Exception):logger.exception('Unhandled error on %s %s',request.method,request.url.path);return JSONResponse(status_code=500,content={'detail':'An internal server error occurred.','code':'internal_error'})
