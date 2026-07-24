@@ -17,10 +17,11 @@ def test_health_route_reports_version():
     assert health.__version__ == '2.5.5'
 
 
-def test_start_bat_no_longer_has_ampersand_crash():
+def test_start_bat_no_longer_has_ampersand_crash_and_is_current():
     text = (ROOT / 'start.bat').read_text(encoding='utf-8', errors='ignore')
     assert '2^>^&1' not in text
     assert 'scripts\\start.ps1' in text
+    assert '2.5.5' in text
 
 
 def test_start_ps1_uses_quote_safe_preflight_and_streaming():
