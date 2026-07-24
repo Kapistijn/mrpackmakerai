@@ -48,7 +48,7 @@ def validate_export_inputs(project:Project,mods:list[ModEntry])->list[ExportIssu
   else:
    parsed=urlparse(mod.download_url)
    if parsed.scheme!='https' or not parsed.netloc:issues.append(ExportIssue('download_invalid',f'{mod.name} must use a valid HTTPS download URL.'))
-   elif not _host_allowed(parsed.netloc):issues.append(ExportIssue('download_host_not_allowed',f'{mod.name} downloads from an unapproved host '{parsed.netloc}'.'))
+   elif not _host_allowed(parsed.netloc):issues.append(ExportIssue('download_host_not_allowed',f"{mod.name} downloads from an unapproved host '{parsed.netloc}'."))
   for digest in (mod.hashes.sha1,mod.hashes.sha512):
    if digest:
     previous_hash=seen_hashes.get(digest.lower())
