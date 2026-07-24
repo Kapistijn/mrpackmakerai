@@ -1,13 +1,12 @@
 # Changelog
 
+## 2.5.2
+
+- Fixed the post-install startup crash caused by the missing `ModSearchResponse` schema.
+- Added an application-import regression test that imports every registered route.
+- Restored the typed `/api/mods/search` response contract.
+
 ## 2.5.1
 
-- Restored the PowerShell spinner/loading screen for long install steps.
-- Kept the installer window open after success or failure instead of disappearing.
-- Added a backend import gate before frontend installation/build, so the real crash is shown at the failing step.
-- Preserved full pip/npm output in install-log.txt while keeping the console readable.
-- Added explicit exit-code checks for venv, pip, backend import, npm, and Vite.
-
-## 2.5.0
-
-- Added audited boundary hardening and deterministic regression coverage.
+- Restored the PowerShell spinner/loading screen.
+- Added explicit installer failure output and backend import checks.
