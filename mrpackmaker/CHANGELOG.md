@@ -1,30 +1,27 @@
 # Changelog
 
+## 2.5.6
+
+- Consolidates the complete Parts 1-13 implementation into one release branch; duplicate PRs #51-#54 are superseded by the canonical release PR.
+- Aligns backend, frontend, installer and Windows launcher version metadata to 2.5.6.
+- Part 7 workers now use persisted project defaults, support per-run overrides, perform real concurrent Modrinth and CurseForge searches, coalesce identical requests, deduplicate cross-source projects and return explicit validation evidence.
+- Existing projects receive an additive `worker_count` database migration with a safe default of 4.
+- Advanced project settings remain closed by default and expose worker count without hiding the rest of the modpack configuration.
+- Startup uses explicit stdout/stderr capture, so normal INFO logs do not become PowerShell exceptions.
+- CI verification remains required for pytest, frontend build and Windows PowerShell parsing.
+
 ## 2.5.4 Parts 11-13
 
-- Added a real multi-worker generation page with validated worker-count and target-mod controls, clear loading/error states, merge-round evidence and a direct builder handoff.
-- Added a Workers entry to project navigation without hiding the existing core sections.
-- Added regression coverage for the worker page route, navigation link, API contract and release verification contract.
-- Added an offline release verifier covering Python compilation, API registration, worker engine, export validation, frontend route and Windows launcher contracts.
-- CI now includes an offline verification job that depends on backend pytest and frontend build.
-- CI now parses `start.ps1` on a real Windows runner and checks that `start.bat` delegates to it.
-- External smoke gates remain explicit: real AI provider, catalog network, Windows launch with installed dependencies and MRPack round-trip.
+- Added the multi-worker generation page, release verification gate and regression coverage.
 
 ## 2.5.4 Parts 8-10
 
-- Merge decisions now score and expose intent coverage, compatibility, performance, dependency quality, confidence, redundancy, synergy, world-generation coverage and export-input completeness.
-- Consolidated worker catalog coalescing into the reusable bounded cache module with TTL/LRU completed-result storage.
-- Added the repository audit report and regression tests.
-
-## 2.5.4 Part 7
-
-- Added true parallel AI workers, bounded concurrency, shared request coalescing, automatic merge rounds and dependency/compatibility/analysis gates.
+- Added evidence-based merge scoring, reusable bounded async coalescing cache and repository audit.
 
 ## 2.5.4 Parts 4-6
 
-- Replaced raw JSON AI editor output with a readable plan card and honest AI fallback labels.
-- Added real top-p and retry controls wired into provider calls.
+- Added structured AI plans, honest deterministic fallbacks and real provider tuning controls.
 
-## 2.5.4
+## 2.5.4 Parts 1-3
 
-- Fixed Windows startup logging and made navigation and Intelligence import consistent.
+- Added clean Windows startup, stable navigation and in-page Intelligence MRPack import.

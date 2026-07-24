@@ -1,5 +1,5 @@
 #requires -Version 5.1
-Set-StrictMode -Version Latest;$ErrorActionPreference='Stop';$ScriptDir=Split-Path -Parent $MyInvocation.MyCommand.Path;$Root=Split-Path -Parent $ScriptDir;Set-Location $Root;$Version='2.5.5';$Backend=Join-Path $Root 'backend';$Frontend=Join-Path $Root 'frontend';$VenvPython=Join-Path $Root 'venv\Scripts\python.exe';$LogFile=Join-Path $Root 'install-log.txt';"MrPackMaker $Version install log - $(Get-Date -Format o)"|Out-File $LogFile -Encoding utf8
+Set-StrictMode -Version Latest;$ErrorActionPreference='Stop';$ScriptDir=Split-Path -Parent $MyInvocation.MyCommand.Path;$Root=Split-Path -Parent $ScriptDir;Set-Location $Root;$Version='2.5.6';$Backend=Join-Path $Root 'backend';$Frontend=Join-Path $Root 'frontend';$VenvPython=Join-Path $Root 'venv\Scripts\python.exe';$LogFile=Join-Path $Root 'install-log.txt';"MrPackMaker $Version install log - $(Get-Date -Format o)"|Out-File $LogFile -Encoding utf8
 function Fail([string]$Message){Write-Host "`nERROR: $Message" -ForegroundColor Red;Write-Host "Full log: $LogFile" -ForegroundColor Yellow;Read-Host 'Press Enter to close';exit 1}
 function Assert-Command([string]$Exe,[string]$Hint){if(-not(Get-Command $Exe -ErrorAction SilentlyContinue)){Fail "$Exe is missing. $Hint"}}
 function Get-ToolVersion([string]$Exe){try{return ((& $Exe --version 2>&1)|Out-String).Trim()}catch{return 'unknown'}}
