@@ -8,6 +8,8 @@ from app.domain.common import FrozenMap, Loader, PerformanceTarget, to_json_safe
 def _strings(values: object) -> frozenset[str]:
     if not values:
         return frozenset()
+    if isinstance(values, str):
+        values = (values,)
     return frozenset(str(value).strip().lower() for value in values if str(value).strip())
 
 
