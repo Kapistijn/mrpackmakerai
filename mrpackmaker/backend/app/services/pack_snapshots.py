@@ -12,11 +12,19 @@ async def _next_version(db,project_id:int)->int:
  return int(row['version'])
 async def create_snapshot(db,project,reason,change=None):
  version=await _next_version(db,project.id)
- analysis=(await db.execute(select(PackAnalysis).where(PackAnalysis.project_id==project.id).order_by(PackAnalysis.version.desc()).limit(1))).scalars().first();report=json.loads(analysis.report_json) if analysis else {}
+ analysis=(await db.execute(select(PackAnalysis).where(PackAnalysis.project_id==project.id).order_by(PackAnalysis.version.desc()).limit(1))).scalars().first()
+ try:
+  report=json.loads(analysis.report_json) if analysis else {}
+ except (TypeError, ValueError, json.JSONDecodeError):
+  report={}
  row=PackSnapshot(project_id=project.id,version=version,project_json=json.dumps(_project_state(project)),mods_json=project.mods_json or '[]',analysis_json=json.dumps(report),hardware_json=json.dumps(_hardware_state(project)),pack_metadata_json=json.dumps({'mrpack_path':project.mrpack_path,'project_name':project.name,'minecraft_version':project.minecraft_version,'loader':project.loader}),generated_files_json=json.dumps({'mrpack_path':project.mrpack_path,'exists':bool(project.mrpack_path)}),reason=reason,change_json=json.dumps(change or {}));db.add(row);await db.flush();return row
 async def list_snapshots(db,project_id):return (await db.execute(select(PackSnapshot).where(PackSnapshot.project_id==project_id).order_by(PackSnapshot.version.desc()))).scalars().all()
 async def restore_snapshot(db,project,snapshot):
- state=json.loads(snapshot.project_json or '{}')
+ try:
+  state=json.loads(snapshot.project_json or '{}')
+ except (TypeError, ValueError, json.JSONDecodeError):
+  state={}
+ if not isinstance(state, dict): state={}
  for field in _PROJECT_FIELDS:
   if field in state:setattr(project,field,state[field])
  project.mods_json=snapshot.mods_json;project.mrpack_path=None

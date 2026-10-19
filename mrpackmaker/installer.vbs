@@ -16,4 +16,6 @@ scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
 psCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File """ & scriptDir & "\scripts\install.ps1"""
 
 ' 1 = normal visible window, True = wait for it to finish.
-shell.Run psCommand, 1, True
+Dim exitCode
+exitCode = shell.Run(psCommand, 1, True)
+WScript.Quit exitCode

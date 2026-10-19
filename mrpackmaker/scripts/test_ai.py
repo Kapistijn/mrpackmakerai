@@ -31,6 +31,7 @@ async def test_ai_connection():
     else:
         print("[FAIL] Provider is not available")
         print("   Make sure LM Studio / Ollama / LiteLLM is running and reachable")
+        await lm.close()
         return False
     print()
 
@@ -42,6 +43,7 @@ async def test_ai_connection():
     except Exception as e:
         print(f"[FAIL] Failed to get model: {e}")
         print("   Make sure a model is loaded / pulled")
+        await lm.close()
         return False
     print()
 
@@ -59,9 +61,11 @@ async def test_ai_connection():
         print(f"[FAIL] Model failed JSON test: {e}")
         print("   This usually means a base model instead of an instruction-tuned one.")
         print("   Recommended: 'Llama 3 Instruct', 'Mistral Instruct', or 'Phi-3 Instruct'")
+        await lm.close()
         return False
     print()
 
+    await lm.close()
     print("=" * 60)
     print("[SUCCESS] All tests passed! AI is ready for modpack generation.")
     print("=" * 60)

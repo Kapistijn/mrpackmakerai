@@ -1,6 +1,6 @@
 """Unified mod DTOs."""
 from __future__ import annotations
-from pydantic import BaseModel,Field
+from pydantic import BaseModel,Field,field_validator
 class ModDependency(BaseModel):
  project_id:str
  dependency_type:str='required'
@@ -32,6 +32,14 @@ class ModEntry(BaseModel):
  dependencies:list[ModDependency]=Field(default_factory=list)
  project_url:str=''
  install_path:str|None=None
+ @field_validator('install_path')
+ @classmethod
+ def safe_install_path(cls,v):
+  if v is None:return v
+  from pathlib import PurePosixPath,PureWindowsPath
+  path=PurePosixPath(str(v).replace('\\','/'))
+  if path.is_absolute() or PureWindowsPath(v).is_absolute() or '..' in path.parts:raise ValueError('install_path must stay inside the pack')
+  return v
 class ModSearchResponse(BaseModel):
  results:list[ModEntry]=Field(default_factory=list)
  total:int=0
