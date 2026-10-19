@@ -41,6 +41,8 @@ async def test_modrinth(api_key: str) -> ApiTestResult:
         return ApiTestResult(ok=False, service="modrinth", status_code=code, detail=reason)
     except httpx.HTTPError as exc:
         return ApiTestResult(ok=False, service="modrinth", detail=f"Could not reach Modrinth: {exc}")
+    except (ValueError, TypeError, AttributeError) as exc:
+        return ApiTestResult(ok=False, service="modrinth", detail=f"Invalid Modrinth response: {exc}")
 
 
 async def test_curseforge(api_key: str) -> ApiTestResult:
@@ -73,3 +75,5 @@ async def test_curseforge(api_key: str) -> ApiTestResult:
         return ApiTestResult(ok=False, service="curseforge", status_code=code, detail=reason)
     except httpx.HTTPError as exc:
         return ApiTestResult(ok=False, service="curseforge", detail=f"Could not reach CurseForge: {exc}")
+    except (ValueError, TypeError, AttributeError) as exc:
+        return ApiTestResult(ok=False, service="curseforge", detail=f"Invalid CurseForge response: {exc}")
