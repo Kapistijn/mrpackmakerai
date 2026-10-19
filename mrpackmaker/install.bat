@@ -6,8 +6,10 @@ REM system-wide.
 setlocal
 cd /d "%~dp0"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\install.ps1"
-if errorlevel 1 (
+set "exitCode=%errorlevel%"
+if not "%exitCode%"=="0" (
     echo.
     echo The installer reported an error. See install-log.txt for details.
     pause
 )
+exit /b %exitCode%

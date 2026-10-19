@@ -18,9 +18,12 @@ if str(BACKEND_DIR) not in sys.path:
 def main() -> None:
     host = os.getenv("MRPACK_HOST", "127.0.0.1")
     try:
-        port = int(os.getenv("MRPACK_PORT", "8000"))
+        raw_port = int(os.getenv("MRPACK_PORT", "8000"))
     except ValueError as exc:
         raise SystemExit("MRPACK_PORT must be a number, for example 8000") from exc
+    if not 1 <= raw_port <= 65535:
+        raise SystemExit("MRPACK_PORT must be between 1 and 65535")
+    port = raw_port
     uvicorn.run(
         "app.main:app",
         host=host,
