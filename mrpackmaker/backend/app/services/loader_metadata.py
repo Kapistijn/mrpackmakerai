@@ -64,9 +64,9 @@ class OfficialLoaderResolver:
             loader = loader if isinstance(loader, LoaderType) else LoaderType(str(loader).lower())
         except ValueError as exc:
             raise LoaderMetadataError(f"Unsupported loader: {loader}") from exc
-        mc = minecraft_version.strip()
-        if not mc:
-            raise LoaderMetadataError("Minecraft version is required")
+        mc = str(minecraft_version or "").strip()
+        if not re.fullmatch(r"\d+\.\d+(?:\.\d+)?", mc):
+            raise LoaderMetadataError("A valid Minecraft version is required")
         if loader is LoaderType.FABRIC:
             return await self._fabric(mc)
         if loader is LoaderType.FORGE:
@@ -76,15 +76,19 @@ class OfficialLoaderResolver:
         raise LoaderMetadataError(f"Unsupported loader: {loader.value}")
 
     async def resolve(self, loader: LoaderType, minecraft_version: str, requested: str | None = None) -> LoaderVersion:
-        versions = await self.list_versions(loader, minecraft_version)
-        requested_version = requested.strip() if requested else None
+        try:
+            normalized_loader = loader if isinstance(loader, LoaderType) else LoaderType(str(loader).lower())
+        except ValueError as exc:
+            raise LoaderMetadataError(f"Unsupported loader: {loader}") from exc
+        versions = await self.list_versions(normalized_loader, minecraft_version)
+        requested_version = str(requested).strip() if requested else None
         if requested_version:
             match = next((item for item in versions if item.version == requested_version), None)
             if match is None:
                 raise LoaderMetadataError(f"{requested_version} is not compatible with Minecraft {minecraft_version}")
             return match
         if not versions:
-            raise LoaderMetadataError(f"No {loader.value} version found for Minecraft {minecraft_version}")
+            raise LoaderMetadataError(f"No {normalized_loader.value} version found for Minecraft {minecraft_version}")
         return versions[0]
 
     async def _fabric(self, mc: str) -> tuple[LoaderVersion, ...]:
@@ -96,7 +100,7 @@ class OfficialLoaderResolver:
             versions = tuple(
                 LoaderVersion(LoaderType.FABRIC, mc, item["loader"]["version"], "fabric-meta", bool(item["loader"].get("stable", False)))
                 for item in data
-                if isinstance(item, dict) and isinstance(item.get("loader"), dict) and item["loader"].get("version")
+                if isinstance(item, dict) and isinstance(item.get("loader"), dict) and isinstance(item["loader"].get("version"), str) and item["loader"].get("version")
             )
             return tuple(sorted(versions, key=lambda item: (_version_key(item.version), item.stable), reverse=True))
         except (ValueError, TypeError, KeyError, json.JSONDecodeError, LoaderMetadataError) as exc:
@@ -130,5 +134,5 @@ class OfficialLoaderResolver:
             raw = (element.text or "").strip()
             match = re.fullmatch(pattern, raw)
             if match:
-                found.append(LoaderVersion(loader, mc, match.group("version"), source, "alpha" not in raw.lower() and "beta" not in raw.lower()))
+                found.append(LoaderVersion(loader, mc, match.group("version"), source, not re.search(r"(?:alpha|beta|rc|snapshot|nightly|dev)", raw, re.I)))
         return tuple(sorted(found, key=lambda item: (_version_key(item.version), item.stable), reverse=True))
