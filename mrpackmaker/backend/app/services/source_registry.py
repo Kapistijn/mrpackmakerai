@@ -56,8 +56,9 @@ class ModSourceRegistry:
         self._providers[source_id] = provider
 
     def get(self, source_id: str) -> ModCatalogProvider:
+        normalized = str(source_id or "").strip().lower()
         try:
-            return self._providers[source_id.strip().lower()]
+            return self._providers[normalized]
         except KeyError as exc:
             available = ", ".join(sorted(self._providers)) or "none"
             raise UnknownModSourceError(
@@ -82,8 +83,14 @@ class ModSourceRegistry:
         return self.get(source_id).available
 
     async def close(self) -> None:
+        errors = []
         for provider in self._providers.values():
-            await provider.close()
+            try:
+                await provider.close()
+            except Exception as exc:
+                errors.append(exc)
+        if errors:
+            raise RuntimeError(f"Failed to close {len(errors)} catalog provider(s)") from errors[0]
 
 
 def create_default_registry() -> ModSourceRegistry:

@@ -9,16 +9,16 @@ class MinecraftSettingsPublic(BaseModel):default_version:str;default_loader:str
 class SourcesSettingsPublic(BaseModel):modrinth_enabled:bool;curseforge_enabled:bool
 class SettingsOverview(BaseModel):
  ai:AISettingsPublic;voice:VoiceSettingsPublic;minecraft:MinecraftSettingsPublic;sources:SourcesSettingsPublic;mod_sources:dict[str,bool];modrinth_key_configured:bool=False;curseforge_key_configured:bool=False;modrinth_key_masked:str='not configured';curseforge_key_masked:str='not configured';admin_locked:bool=False;provider_presets:dict[str,str]=Field(default_factory=dict)
-class AIModelSelection(BaseModel):model:str=''
+class AIModelSelection(BaseModel):model:str=Field(default='',max_length=255)
 class AISettingsUpdate(BaseModel):
- provider:str|None=None;base_url:str|None=None;model:str|None=None;timeout_seconds:float|None=Field(default=None,ge=1.0,le=300.0);max_tokens:int|None=Field(default=None,ge=128,le=32768);temperature:float|None=Field(default=None,ge=0.0,le=2.0);top_p:float|None=Field(default=None,ge=0.0,le=1.0);retry_attempts:int|None=Field(default=None,ge=1,le=5);context_size:int|None=Field(default=None,ge=512,le=131072);api_key:str|None=None
+ provider:str|None=Field(default=None,max_length=64);base_url:str|None=Field(default=None,max_length=2048);model:str|None=Field(default=None,max_length=255);timeout_seconds:float|None=Field(default=None,ge=1.0,le=300.0);max_tokens:int|None=Field(default=None,ge=128,le=32768);temperature:float|None=Field(default=None,ge=0.0,le=2.0);top_p:float|None=Field(default=None,ge=0.0,le=1.0);retry_attempts:int|None=Field(default=None,ge=1,le=5);context_size:int|None=Field(default=None,ge=512,le=131072);api_key:str|None=None
 class VoiceSettingsUpdate(BaseModel):
  whisper_url:str|None=None;tts_provider:str|None=None;tts_base_url:str|None=None;tts_model:str|None=None;tts_voice:str|None=None;tts_api_key:str|None=None
 class MinecraftSettingsUpdate(BaseModel):default_version:str|None=None;default_loader:str|None=None
 class SourcesSettingsUpdate(BaseModel):modrinth_enabled:bool|None=None;curseforge_enabled:bool|None=None
 class UnifiedSettingsUpdate(BaseModel):
  ai:AISettingsUpdate|None=None;voice:VoiceSettingsUpdate|None=None;minecraft:MinecraftSettingsUpdate|None=None;sources:SourcesSettingsUpdate|None=None;modrinth_key:str|None=None;curseforge_key:str|None=None
-class TTSTestRequest(BaseModel):text:str=Field(default='MrPackMaker text to speech is working.',max_length=500)
+class TTSTestRequest(BaseModel):text:str=Field(default='MrPackMaker text to speech is working.',min_length=1,max_length=500)
 class ApiTestResult(BaseModel):ok:bool;service:str;status_code:int|None=None;latency_ms:int|None=None;detail:str|None=None;info:dict[str,str]=Field(default_factory=dict)
 class AdminSettingsUpdate(BaseModel):ai:AISettingsUpdate|None=None;modrinth_key:str|None=None;curseforge_key:str|None=None;admin_token:str|None=Field(default=None,min_length=16)
 class AdminSettingsResponse(BaseModel):ai:AISettingsPublic;modrinth_key:str;curseforge_key:str;admin_token_configured:bool

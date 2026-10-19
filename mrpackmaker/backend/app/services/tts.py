@@ -43,8 +43,12 @@ class TTSClient:
         text = (text or "").strip()
         if not text:
             raise TTSError("Nothing to synthesize")
+        if len(text) > 10_000:
+            raise TTSError("TTS input is too long")
 
         base = self._settings.tts_base_url.rstrip("/")
+        if not base.startswith(("http://", "https://")):
+            raise TTSError("TTS address must use http or https")
         headers = {"Content-Type": "application/json"}
         if self._settings.tts_api_key:
             headers["Authorization"] = f"Bearer {self._settings.tts_api_key}"

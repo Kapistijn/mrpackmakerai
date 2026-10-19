@@ -9,6 +9,12 @@ import httpx
 class CatalogRateLimiter:
     """Application-wide limiter with a retry count and hard per-request deadline."""
     def __init__(self, concurrency: int = 4, min_interval: float = 0.12, retries: int = 3, max_seconds: float = 20.0) -> None:
+        if concurrency < 1:
+            raise ValueError("concurrency must be at least 1")
+        if retries < 0:
+            raise ValueError("retries cannot be negative")
+        if min_interval < 0 or max_seconds <= 0:
+            raise ValueError("interval must be non-negative and max_seconds positive")
         self._semaphore = asyncio.Semaphore(concurrency)
         self._min_interval = min_interval
         self._retries = retries
