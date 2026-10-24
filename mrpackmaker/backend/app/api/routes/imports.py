@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json,os,tempfile
+import json,os,tempfile,zipfile
 from pathlib import Path
 from fastapi import APIRouter,Depends,File,HTTPException,UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,14 +14,20 @@ MAX_MRPACK_BYTES=512*1024*1024
 @router.post('')
 async def import_mrpack(file:UploadFile=File(...),db:AsyncSession=Depends(get_db)):
  if not (file.filename or '').lower().endswith('.mrpack'):raise HTTPException(status_code=400,detail='Only .mrpack files are supported')
- data=await file.read()
- if not data:raise HTTPException(status_code=400,detail='The uploaded MRPack is empty')
- if len(data)>MAX_MRPACK_BYTES:raise HTTPException(status_code=413,detail='MRPack exceeds the 512 MB upload limit')
  fd,path=tempfile.mkstemp(suffix='.mrpack');os.close(fd)
  try:
-  with open(path,'wb') as tmp:tmp.write(data)
+  size=0
+  with open(path,'wb') as tmp:
+   while True:
+    chunk=await file.read(1024*1024)
+    if not chunk:break
+    size+=len(chunk)
+    if size>MAX_MRPACK_BYTES:raise HTTPException(status_code=413,detail='MRPack exceeds the 512 MB upload limit')
+    tmp.write(chunk)
+  if size==0:raise HTTPException(status_code=400,detail='The uploaded MRPack is empty')
   result=import_manifest(path,None)
- except (ValueError,OSError) as exc:raise HTTPException(status_code=422,detail=str(exc)) from exc
+ except HTTPException:raise
+ except (ValueError,OSError,zipfile.BadZipFile,LookupError,TypeError) as exc:raise HTTPException(status_code=422,detail=str(exc)) from exc
  finally:
   try:os.unlink(path)
   except FileNotFoundError:pass

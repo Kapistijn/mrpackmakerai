@@ -35,7 +35,7 @@ def _covers(text: str, category: str) -> bool:
 
 
 def verify_requirements(mods: list[ModEntry], intent: IntentAnalysis) -> RequirementCheck:
-    joined = " ".join(" ".join((m.name, m.slug, m.summary, *m.categories)) for m in mods).casefold()
+    joined = " ".join(" ".join(str(value or "") for value in (m.name, m.slug, m.summary, *(m.categories or ()))) for m in mods).casefold()
     satisfied: list[str] = []
     missing: list[str] = []
     for category in intent.categories:
@@ -57,8 +57,11 @@ def fill_missing(candidates, selected, check: RequirementCheck, intent: IntentAn
         return []
     selected_keys = {f"{m.source}:{m.id}" for m in selected}
     additions = []
+    remaining = max(0, profile.max_content_mods - len(selected))
     ranked = rank_by_quality(candidates, intent, profile)
     for category in check.missing:
+        if len(additions) >= remaining:
+            break
         for score in ranked:
             key = f"{score.mod.source}:{score.mod.id}"
             if key in selected_keys:

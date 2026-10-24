@@ -39,15 +39,15 @@ class DependencyResolution:
 class DependencyResolver:
     """Resolve the complete closure once, stopping when a pass makes no change."""
     def __init__(self, resolver: ModResolver, *, max_passes: int = 5) -> None:
-        if max_passes < 1: raise ValueError('max_passes must be positive')
+        if not isinstance(max_passes, int) or isinstance(max_passes, bool) or max_passes < 1: raise ValueError('max_passes must be positive')
         self._resolver = resolver
         self._max_passes = max_passes
         self._cache: dict[tuple[str,str,str,str], ModEntry | None] = {}
 
     @staticmethod
-    def _key(mod: ModEntry) -> str: return f'{mod.source}:{mod.id}'
+    def _key(mod: ModEntry) -> str: return f'{str(mod.source).strip().casefold()}:{str(mod.id).strip()}'
     @staticmethod
-    def _dep_key(dep: ModDependency, parent: ModEntry) -> str: return f'{dep.source or parent.source}:{dep.project_id}'
+    def _dep_key(dep: ModDependency, parent: ModEntry) -> str: return f'{str(dep.source or parent.source).strip().casefold()}:{str(dep.project_id).strip()}'
     @staticmethod
     def _has_identity(mods: list[ModEntry], candidate: ModEntry) -> bool: return any(mod_identity(m) == mod_identity(candidate) for m in mods)
 
@@ -60,18 +60,29 @@ class DependencyResolver:
 
     @staticmethod
     def _cycles(mods: list[ModEntry]) -> tuple[tuple[str, ...], ...]:
-        by_key = {f'{m.source}:{m.id}': m for m in mods}; found: set[tuple[str, ...]] = set(); active: list[str] = []
-        def canonical(ring: list[str]) -> tuple[str, ...]: return min(tuple(ring[i:]+ring[:i]) for i in range(len(ring)))
-        def visit(key: str) -> None:
-            if key in active:
-                found.add(canonical(active[active.index(key):])); return
-            if key not in by_key: return
-            active.append(key)
-            for dep in by_key[key].dependencies:
-                if dep.dependency_type.casefold() != INCOMPATIBLE:
-                    visit(f'{dep.source or by_key[key].source}:{dep.project_id}')
-            active.pop()
-        for key in sorted(by_key): visit(key)
+        by_key = {DependencyResolver._key(m): m for m in mods}; found: set[tuple[str, ...]] = set(); state={}; path=[]; positions={}
+        def canonical(ring: list[str]) -> tuple[str, ...]:
+            return min(tuple(ring[i:]+ring[:i]) for i in range(len(ring))) if ring else ()
+        for root in sorted(by_key):
+            if state.get(root): continue
+            work=[(root,False)]
+            while work:
+                key,leaving=work.pop()
+                if key not in by_key: continue
+                if leaving:
+                    state[key]=2
+                    if path and path[-1]==key:path.pop();positions.pop(key,None)
+                    continue
+                if state.get(key)==2: continue
+                if state.get(key)==1:
+                    start=positions.get(key)
+                    if start is not None:found.add(canonical(path[start:]))
+                    continue
+                state[key]=1;positions[key]=len(path);path.append(key);work.append((key,True))
+                for dep in reversed(by_key[key].dependencies):
+                    if str(dep.dependency_type or '').strip().casefold()==INCOMPATIBLE:continue
+                    dep_key=DependencyResolver._dep_key(dep,by_key[key])
+                    if dep_key in by_key:work.append((dep_key,False))
         return tuple(sorted(found))
 
     def _unresolved_required(self, mods: list[ModEntry]) -> list[tuple[str, str]]:
@@ -80,7 +91,7 @@ class DependencyResolver:
         missing: list[tuple[str, str]] = []
         for parent in mods:
             for dep in parent.dependencies:
-                if dep.dependency_type.strip().casefold() == REQUIRED:
+                if str(dep.dependency_type or '').strip().casefold() == REQUIRED:
                     dep_key = self._dep_key(dep, parent)
                     if dep_key not in present:
                         missing.append((self._key(parent), dep_key))
@@ -93,7 +104,7 @@ class DependencyResolver:
             events.append(DependencyEvent(pass_number, 'scan', None, f'checking {len(mods)} mods'))
             for parent in tuple(mods):
                 for dep in parent.dependencies:
-                    kind = dep.dependency_type.strip().casefold(); dep_key = self._dep_key(dep, parent); failure_key = (self._key(parent), dep_key)
+                    kind = str(dep.dependency_type or REQUIRED).strip().casefold(); dep_key = self._dep_key(dep, parent); failure_key = (self._key(parent), dep_key)
                     if kind == INCOMPATIBLE:
                         if any(self._key(m) == dep_key for m in mods): pass_failures[failure_key] = DependencyFailure(*failure_key, 'declared incompatible dependency is present', 'remove one of the conflicting mods')
                         continue

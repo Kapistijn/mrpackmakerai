@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 
 def validate_install_path(value: str) -> str:
-    if not isinstance(value,str) or not value or '\\' in value:
+    if not isinstance(value,str) or not value or value.endswith('/') or any(ord(char) < 32 for char in value) or '\\' in value:
         raise ValueError('Install path must be a non-empty POSIX relative path')
     path=PurePosixPath(value)
     if path.is_absolute() or not path.parts or '..' in path.parts or '.' in path.parts:

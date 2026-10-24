@@ -24,7 +24,10 @@ _SHADER_ALIASES = {
 
 
 def normalize_shader(value: str | None) -> str:
-    return _SHADER_ALIASES.get((value or "").strip().casefold(), SHADER_OFF)
+    # Persisted settings can contain legacy non-string values; normalize them
+    # rather than crashing while rebuilding a project profile.
+    text = "" if value is None else str(value)
+    return _SHADER_ALIASES.get(text.strip().casefold(), SHADER_OFF)
 
 
 def _ram_content_budget(ram_gb: int) -> int:
@@ -100,6 +103,7 @@ def _performance_floor(ram_gb: int, target_fps: int | None, profile: str) -> flo
 def build_pack_profile(req: Requirements) -> PackProfile:
     profile = _performance_profile(req)
     ram_gb = req.target_ram_gb or {"performance": 6, "balanced": 8, "visuals": 12}[profile]
+    ram_gb = max(1, min(1024, int(ram_gb)))
     shader_mode = normalize_shader(req.shader_support)
     if shader_mode == SHADER_ENABLED and ram_gb <= 4:
         shader_mode = SHADER_OPTIONAL

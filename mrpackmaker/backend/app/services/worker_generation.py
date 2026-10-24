@@ -61,11 +61,17 @@ class WorkerGenerationEngine:
   results=await asyncio.gather(*(search_source(catalog,query) for catalog in self.registry.providers(available_only=True) for query in queries[:8]))
   for hits,_ in results:
    for mod in hits:candidates.setdefault(mod_identity(mod),mod)
-  mods=list(candidates.values())[:max(target,1)];coverage=float(plan.intent_coverage if plan else 40);performance=float(plan.performance if plan else 50)
+  target=max(0,int(target))
+  mods=list(candidates.values())[:target];coverage=float(plan.intent_coverage if plan else 40);performance=float(plan.performance if plan else 50)
   return WorkerCandidate(directive,mods,coverage*.45+performance*.2+min(len(mods),target)/max(target,1)*35,coverage,70.0,performance,60.0,65.0 if plan else 35.0,plan.rationale if plan else 'Deterministic catalog exploration fallback.',plan is not None,fallback_reason)
  async def generate(self,prompt:str,mc:str,loader:LoaderType,workers:int,target:int=40):
   count=self.validate_worker_count(workers);focuses=('survival progression','performance stability','world generation','immersion realism','content diversity','structures exploration','automation utility','multiplayer balance');directives=[WorkerDirective(i,int(hashlib.sha256(f'{prompt}:{i}'.encode()).hexdigest()[:8],16),focuses[i%len(focuses)]) for i in range(count)];semaphore=asyncio.Semaphore(self.max_concurrency)
   async def run(directive):
    async with semaphore:return await self._worker(directive,prompt,mc,loader,target)
-  candidates=await asyncio.gather(*(run(directive) for directive in directives));return self.merge_rounds(list(candidates))
+  outcomes=await asyncio.gather(*(run(directive) for directive in directives),return_exceptions=True)
+  candidates=[outcome for outcome in outcomes if isinstance(outcome,WorkerCandidate)]
+  if not candidates:
+   errors=[outcome for outcome in outcomes if isinstance(outcome,Exception)]
+   raise RuntimeError('All generation workers failed') from (errors[0] if errors else None)
+  return self.merge_rounds(candidates)
 class _WorkerPlan(BaseModel):queries:list[str]=[];rationale:str='';intent_coverage:float=50;performance:float=50

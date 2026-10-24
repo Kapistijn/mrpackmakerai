@@ -69,7 +69,7 @@ def _content_signals(text: str) -> set[str]:
 
 
 def extract_intent(prompt: str) -> IntentProfile:
-    text = (prompt or "").strip().casefold()
+    text = str(prompt or "").strip().casefold()
     themes = tuple(term for term in _THEME_TERMS if _contains(text, term))
     styles = tuple(dict.fromkeys((*[term for term in _STYLE_TERMS if _contains(text, term)], *_content_signals(text))))
     forbidden: list[str] = []
@@ -86,7 +86,7 @@ def extract_intent(prompt: str) -> IntentProfile:
 def _number_near(text: str, markers: tuple[str, ...]) -> int | None:
     for marker in markers:
         match = re.search(rf"{re.escape(marker)}\s+(\d+)", text, re.I)
-        if match: return int(match.group(1))
+        if match: return max(0, int(match.group(1)))
     return None
 
 

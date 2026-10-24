@@ -30,9 +30,19 @@ class SecretStore:
     def _key(self, *, create: bool) -> bytes | None:
         environment_key = os.getenv("MRPACK_SECRET_KEY")
         if environment_key:
-            return environment_key.encode("ascii")
+            try:
+                key = environment_key.encode("ascii")
+                Fernet(key)
+            except (UnicodeEncodeError, ValueError) as exc:
+                raise SecretStoreError("MRPACK_SECRET_KEY is not a valid Fernet key") from exc
+            return key
         if self._key_path.exists():
-            return self._key_path.read_bytes().strip()
+            try:
+                key = self._key_path.read_bytes().strip()
+                Fernet(key)
+            except (OSError, ValueError) as exc:
+                raise SecretStoreError("Local secret key is invalid or unreadable") from exc
+            return key
         if not create:
             return None
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -61,7 +71,7 @@ class SecretStore:
         try:
             decrypted = Fernet(key).decrypt(self._store_path.read_bytes())
             values = json.loads(decrypted.decode("utf-8"))
-        except (InvalidToken, ValueError, json.JSONDecodeError) as exc:
+        except (InvalidToken, ValueError, OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise SecretStoreError("Could not decrypt local integration secrets") from exc
         if not isinstance(values, dict) or not all(isinstance(value, str) for value in values.values()):
             raise SecretStoreError("Encrypted secret store has an invalid shape")

@@ -65,11 +65,15 @@ jobs:
         shell: powershell
         run: |
           $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Join-Path $PWD 'mrpackmaker/scripts/start.ps1'),
-            [ref]$null,
-            [ref]$errors
-          ) | Out-Null
-          if ($errors.Count -gt 0) { $errors | Format-List | Out-String; throw 'start.ps1 contains PowerShell syntax errors' }
-          if (-not (Select-String -Path 'mrpackmaker/start.bat' -Pattern 'scripts\\start.ps1')) { throw 'start.bat does not delegate to start.ps1' }
+          foreach ($script in @('start.ps1', 'install.ps1')) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Join-Path $PWD "mrpackmaker/scripts/$script"),
+              [ref]$null,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) { $errors | Format-List | Out-String; throw "$script contains PowerShell syntax errors" }
+          }
+          if (-not (Select-String -Path 'mrpackmaker/start.bat' -Pattern 'scripts\start.ps1')) { throw 'start.bat does not delegate to start.ps1' }
+          if (-not (Select-String -Path 'mrpackmaker/install.bat' -Pattern 'scripts\install.ps1')) { throw 'install.bat does not delegate to install.ps1' }
           Write-Host 'Windows launcher parse: PASS'

@@ -7,8 +7,8 @@ request into a structured, inspectable :class:`IntentAnalysis` (goal +
 categories + avoid list) *before* any provider search happens, so the whole
 pipeline can reason about what the player actually asked for.
 
-The analysis is deterministic on its own; an AI provider may enrich it, but the
-deterministic result is always a valid, machine-readable fallback.
+The analysis is deterministic on its own; an AI provider may enrich it, but
+the deterministic result is always a valid, machine-readable fallback.
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ def _dedupe(values) -> tuple[str, ...]:
 
 
 def analyze_intent(prompt: str, *, theme: str | None = None, forbidden: tuple[str, ...] = ()) -> IntentAnalysis:
-    text = (prompt or "").casefold()
+    text = str(prompt or "").casefold()
     realism = any(re.search(p, text) for p in _REALISM_PATTERNS)
 
     categories: list[str] = []
@@ -91,7 +91,7 @@ def analyze_intent(prompt: str, *, theme: str | None = None, forbidden: tuple[st
         if any(signal in text for signal in signals):
             categories.append(category)
 
-    avoid: list[str] = list(forbidden)
+    avoid: list[str] = [str(value) for value in (forbidden if isinstance(forbidden, (tuple, list, set)) else ()) if value]
     if re.search(r"no magic|geen magie|zonder magie", text):
         avoid.append("magic")
     if re.search(r"no tech|geen technologie", text):
@@ -102,7 +102,7 @@ def analyze_intent(prompt: str, *, theme: str | None = None, forbidden: tuple[st
         categories = list(REALISM_CATEGORIES) + categories
         avoid = list(REALISM_AVOID) + avoid
     else:
-        selected_theme = (theme or "").casefold()
+        selected_theme = str(theme or "").casefold()
         theme_cats = THEME_CATEGORIES.get(selected_theme, ())
         categories = list(theme_cats) + categories
         goal = f"{selected_theme or 'custom'} experience"
@@ -119,12 +119,16 @@ def merge_ai_intent(base: IntentAnalysis, *, goal: str | None, categories, avoid
     The AI can add categories and refine the goal, but it can never remove the
     deterministic guarantees (a realism request stays realism-focused).
     """
-    merged_categories = _dedupe([*base.categories, *(categories or [])])
-    merged_avoid = _dedupe([*base.avoid, *(avoid or [])])
+    def values(value):
+        if isinstance(value, str): return (value,)
+        if isinstance(value, (tuple, list, set)): return tuple(str(item) for item in value if item)
+        return ()
+    merged_categories = _dedupe([*base.categories, *values(categories)])
+    merged_avoid = _dedupe([*base.avoid, *values(avoid)])
     avoid_set = set(merged_avoid)
     merged_categories = tuple(c for c in merged_categories if c not in avoid_set)
     return IntentAnalysis(
-        goal=(goal or base.goal).strip() or base.goal,
+        goal=(str(goal).strip() if goal is not None else base.goal).strip() or base.goal,
         categories=merged_categories,
         avoid=merged_avoid,
         realism_focus=base.realism_focus or bool(realism_focus),

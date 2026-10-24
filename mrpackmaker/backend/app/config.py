@@ -4,7 +4,7 @@ import json,os
 from pathlib import Path
 from typing import Any
 from pydantic import BaseModel,Field,field_validator
-from app.services.secret_store import SecretStore
+from app.services.secret_store import SecretStore, SecretStoreError
 
 def _repo_root()->Path:return Path(__file__).resolve().parents[2]
 PROVIDER_PRESETS={'lmstudio':'http://localhost:1234/v1','ollama':'http://localhost:11434/v1','litellm':'http://localhost:4000/v1'}
@@ -55,9 +55,20 @@ class AppConfig(BaseModel):
 def _environment_or(data:dict[str,Any],env_name:str,fallback:Any='')->Any:
  value=os.getenv(env_name);return value if value is not None else fallback
 def load_config()->AppConfig:
- config_path=_repo_root()/'config.json';data=json.loads(config_path.read_text(encoding='utf-8')) if config_path.exists() else {};ai_data=dict(data.get('ai',{}));
+ config_path=_repo_root()/'config.json'
+ try:
+  data=json.loads(config_path.read_text(encoding='utf-8')) if config_path.exists() else {}
+  if not isinstance(data, dict): data = {}
+ except (OSError, UnicodeError, json.JSONDecodeError):
+  data = {}
+ ai_data=dict(data.get('ai',{}));
  if 'base_url' not in ai_data and 'url' in ai_data:ai_data['base_url']=ai_data.pop('url')
- base_url_explicit=('base_url' in ai_data) or (os.getenv('MRPACK_AI_BASE_URL') is not None);apis_data=dict(data.get('apis',{}));minecraft_data=dict(data.get('minecraft',{}));sources_data=dict(data.get('sources',{}));voice_data=dict(data.get('voice',{}));security_data=dict(data.get('security',{}));stored_secrets=SecretStore(_repo_root()/'data').load();resolved_provider=_environment_or(ai_data,'MRPACK_AI_PROVIDER',ai_data.get('provider','lmstudio'));ai_data['provider']=resolved_provider;preset=default_base_url_for(resolved_provider);ai_data['base_url']=preset if not base_url_explicit and preset else _environment_or(ai_data,'MRPACK_AI_BASE_URL',ai_data.get('base_url','http://localhost:1234/v1'));ai_data['model']=_environment_or(ai_data,'MRPACK_AI_MODEL',ai_data.get('model',''));ai_data['api_key']=_environment_or(ai_data,'MRPACK_AI_API_KEY',stored_secrets.get('ai_api_key',ai_data.get('api_key','')))
+ base_url_explicit=('base_url' in ai_data) or (os.getenv('MRPACK_AI_BASE_URL') is not None);apis_data=dict(data.get('apis',{}));minecraft_data=dict(data.get('minecraft',{}));sources_data=dict(data.get('sources',{}));voice_data=dict(data.get('voice',{}));security_data=dict(data.get('security',{}))
+ try:
+  stored_secrets=SecretStore(_repo_root()/'data').load()
+ except SecretStoreError:
+  stored_secrets={}
+ resolved_provider=_environment_or(ai_data,'MRPACK_AI_PROVIDER',ai_data.get('provider','lmstudio'));ai_data['provider']=resolved_provider;preset=default_base_url_for(resolved_provider);ai_data['base_url']=preset if not base_url_explicit and preset else _environment_or(ai_data,'MRPACK_AI_BASE_URL',ai_data.get('base_url','http://localhost:1234/v1'));ai_data['model']=_environment_or(ai_data,'MRPACK_AI_MODEL',ai_data.get('model',''));ai_data['api_key']=_environment_or(ai_data,'MRPACK_AI_API_KEY',stored_secrets.get('ai_api_key',ai_data.get('api_key','')))
  apis_data['modrinth_key']=_environment_or(apis_data,'MRPACK_MODRINTH_KEY',stored_secrets.get('modrinth_key',apis_data.get('modrinth_key','')));apis_data['curseforge_key']=_environment_or(apis_data,'MRPACK_CURSEFORGE_KEY',stored_secrets.get('curseforge_key',apis_data.get('curseforge_key','')));voice_data['whisper_url']=_environment_or(voice_data,'MRPACK_WHISPER_URL',voice_data.get('whisper_url','http://localhost:9000'));voice_data['tts_provider']=_environment_or(voice_data,'MRPACK_TTS_PROVIDER',voice_data.get('tts_provider','disabled'));voice_data['tts_base_url']=_environment_or(voice_data,'MRPACK_TTS_BASE_URL',voice_data.get('tts_base_url',''));voice_data['tts_model']=_environment_or(voice_data,'MRPACK_TTS_MODEL',voice_data.get('tts_model',''));voice_data['tts_voice']=_environment_or(voice_data,'MRPACK_TTS_VOICE',voice_data.get('tts_voice','alloy'));voice_data['tts_api_key']=_environment_or(voice_data,'MRPACK_TTS_API_KEY',stored_secrets.get('tts_api_key',voice_data.get('tts_api_key','')));security_data['admin_token']=_environment_or(security_data,'MRPACK_ADMIN_TOKEN',stored_secrets.get('admin_token',security_data.get('admin_token','')))
  return AppConfig(ai=AIConfig(**ai_data),apis=APIConfig(**apis_data),minecraft=MinecraftConfig(**minecraft_data),sources=SourcesConfig(**sources_data),voice=VoiceConfig(**voice_data),security=SecurityConfig(**security_data))
 config=load_config()

@@ -44,7 +44,7 @@ def shaderpack_note(profile: PackProfile) -> str | None:
         "low": "ComplementaryUnbound (Potato preset)",
         "medium": "ComplementaryReimagined (Medium preset)",
         "high": "BSL / Complementary (High preset)",
-    }[profile.shader_quality]
+    }.get(profile.shader_quality, "ComplementaryReimagined (Medium preset)")
     mode = "auto-enabled" if profile.shader_mode == SHADER_ENABLED else "supported (install a pack to enable)"
     return (
         f"Shader support: {mode}\n"
